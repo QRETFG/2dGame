@@ -6,15 +6,27 @@ export interface Platform {
   type: 'ground' | 'platform';
 }
 
+export type EnemyType =
+  | 'slime'
+  | 'bat'
+  | 'skeleton'
+  | 'crab'
+  | 'crystal-snail'
+  | 'fly-eye'
+  | 'ghost'
+  | 'lizard'
+  | 'mini-demon'
+  | 'fusion-boss';
+
 export interface EnemySpawn {
   x: number;
   y: number;
-  type: 'slime' | 'bat' | 'skeleton';
+  type: EnemyType;
 }
 
 export interface RoomData {
   id: string;
-  type: 'start' | 'combat' | 'treasure' | 'shop' | 'boss';
+  type: 'start' | 'combat' | 'treasure' | 'shop' | 'boss' | 'procedural';
   width: number;
   height: number;
   exits: {

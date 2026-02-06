@@ -16,11 +16,18 @@ export abstract class Enemy extends Phaser.Physics.Arcade.Sprite {
   protected config: EnemyConfig;
   protected currentState: EnemyState = 'idle';
   protected health: number;
+  protected maxHealth: number;
   protected player: Player | null = null;
   protected patrolDirection = 1;
   protected patrolTimer = 0;
   protected attackCooldown = false;
   protected isDead = false;
+  private healthBarBg?: Phaser.GameObjects.Rectangle;
+  private healthBarFill?: Phaser.GameObjects.Rectangle;
+  private healthBarBgWidth = 30;
+  private healthBarBgHeight = 5;
+  private healthBarFillWidth = 28;
+  private healthBarFillHeight = 3;
 
   constructor(
     scene: Phaser.Scene,
@@ -33,11 +40,13 @@ export abstract class Enemy extends Phaser.Physics.Arcade.Sprite {
 
     this.config = config;
     this.health = config.health;
+    this.maxHealth = config.health;
 
     scene.add.existing(this);
     scene.physics.add.existing(this);
 
     this.setCollideWorldBounds(true);
+    this.createHealthBar();
   }
 
   setPlayer(player: Player): void {
@@ -59,7 +68,14 @@ export abstract class Enemy extends Phaser.Physics.Arcade.Sprite {
   takeDamage(amount: number): void {
     if (this.isDead) return;
 
-    this.health -= amount;
+    const finalDamage = Math.max(0, Math.round(amount));
+    if (finalDamage <= 0) {
+      return;
+    }
+
+    this.health = Math.max(0, this.health - finalDamage);
+    this.showDamageText(finalDamage);
+    this.refreshHealthBar();
 
     // 受击闪烁
     this.setTint(0xff0000);
@@ -79,6 +95,7 @@ export abstract class Enemy extends Phaser.Physics.Arcade.Sprite {
   protected die(): void {
     this.isDead = true;
     this.currentState = 'dead';
+    this.clearHealthBar();
 
     // 掉落金币
     const coinAmount = Phaser.Math.Between(
@@ -114,11 +131,98 @@ export abstract class Enemy extends Phaser.Physics.Arcade.Sprite {
     return this.getDistanceToPlayer() <= this.config.attackRange;
   }
 
+  protected getHealthBarWidth(): number {
+    return 30;
+  }
+
+  protected getHealthBarHeight(): number {
+    return 5;
+  }
+
   // 子类实现具体行为
   abstract updateBehavior(): void;
 
   update(): void {
     if (this.isDead) return;
+    this.updateHealthBarPosition();
     this.updateBehavior();
+  }
+
+  destroy(fromScene?: boolean): void {
+    this.clearHealthBar();
+    super.destroy(fromScene);
+  }
+
+  private createHealthBar(): void {
+    this.healthBarBgWidth = this.getHealthBarWidth();
+    this.healthBarBgHeight = this.getHealthBarHeight();
+    this.healthBarFillWidth = Math.max(1, this.healthBarBgWidth - 2);
+    this.healthBarFillHeight = Math.max(1, this.healthBarBgHeight - 2);
+
+    const yOffset = this.getHealthBarYOffset();
+    this.healthBarBg = this.scene.add
+      .rectangle(this.x, this.y - yOffset, this.healthBarBgWidth, this.healthBarBgHeight, 0x1f1f1f, 0.85)
+      .setDepth(22)
+      .setOrigin(0.5, 0.5);
+
+    this.healthBarFill = this.scene.add
+      .rectangle(this.x, this.y - yOffset, this.healthBarFillWidth, this.healthBarFillHeight, 0x2ee66b, 1)
+      .setDepth(23)
+      .setOrigin(0.5, 0.5);
+  }
+
+  private refreshHealthBar(): void {
+    if (!this.healthBarFill) {
+      return;
+    }
+
+    const ratio = Phaser.Math.Clamp(this.health / this.maxHealth, 0, 1);
+    const width = Math.max(1, this.healthBarFillWidth * ratio);
+    this.healthBarFill.setDisplaySize(width, this.healthBarFillHeight);
+  }
+
+  private updateHealthBarPosition(): void {
+    if (!this.healthBarBg || !this.healthBarFill) {
+      return;
+    }
+
+    const yOffset = this.getHealthBarYOffset();
+    this.healthBarBg.setPosition(this.x, this.y - yOffset);
+    this.healthBarFill.setPosition(
+      this.x - (this.healthBarFillWidth - this.healthBarFill.displayWidth) / 2,
+      this.y - yOffset
+    );
+  }
+
+  private getHealthBarYOffset(): number {
+    const visualHeight = this.displayHeight || 24;
+    return visualHeight * 0.65;
+  }
+
+  private clearHealthBar(): void {
+    this.healthBarBg?.destroy();
+    this.healthBarBg = undefined;
+    this.healthBarFill?.destroy();
+    this.healthBarFill = undefined;
+  }
+
+  private showDamageText(amount: number): void {
+    const damageText = this.scene.add
+      .text(this.x, this.y - this.getHealthBarYOffset() - 10, `-${amount}`, {
+        fontSize: '14px',
+        color: '#ff5c5c',
+        fontStyle: 'bold',
+      })
+      .setOrigin(0.5)
+      .setDepth(30);
+
+    this.scene.tweens.add({
+      targets: damageText,
+      y: damageText.y - 22,
+      alpha: 0,
+      duration: 420,
+      ease: 'Quad.easeOut',
+      onComplete: () => damageText.destroy(),
+    });
   }
 }
