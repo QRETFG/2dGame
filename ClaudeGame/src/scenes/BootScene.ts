@@ -60,6 +60,14 @@ export class BootScene extends Phaser.Scene {
       frameWidth: 32,
       frameHeight: 32,
     });
+    this.load.spritesheet('skeleton-idle', 'assets/sprites/enemies/skeleton/skeleton-idle.png', {
+      frameWidth: 32,
+      frameHeight: 32,
+    });
+    this.load.spritesheet('skeleton-walk', 'assets/sprites/enemies/skeleton/skeleton-walk.png', {
+      frameWidth: 32,
+      frameHeight: 32,
+    });
 
     // 加载tileset
     this.load.image('tileset', 'assets/tilemaps/tileset.png');
@@ -113,6 +121,20 @@ export class BootScene extends Phaser.Scene {
     this.anims.create({
       key: 'bat-anim',
       frames: this.anims.generateFrameNumbers('bat', { start: 0, end: 4 }),
+      frameRate: 8,
+      repeat: -1,
+    });
+
+    this.anims.create({
+      key: 'skeleton-idle-anim',
+      frames: this.anims.generateFrameNumbers('skeleton-idle', { start: 0, end: 3 }),
+      frameRate: 6,
+      repeat: -1,
+    });
+
+    this.anims.create({
+      key: 'skeleton-walk-anim',
+      frames: this.anims.generateFrameNumbers('skeleton-walk', { start: 0, end: 3 }),
       frameRate: 8,
       repeat: -1,
     });
