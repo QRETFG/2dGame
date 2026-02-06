@@ -46,6 +46,10 @@ export class BootScene extends Phaser.Scene {
       frameWidth: 32,
       frameHeight: 32,
     });
+    this.load.spritesheet('player-shoot', 'assets/sprites/player/player-shoot.png', {
+      frameWidth: 32,
+      frameHeight: 32,
+    });
 
     // 加载敌人精灵表
     this.load.spritesheet('slime', 'assets/sprites/enemies/slime/spritesheet.png', {
@@ -84,6 +88,13 @@ export class BootScene extends Phaser.Scene {
       key: 'player-jump-anim',
       frames: this.anims.generateFrameNumbers('player-jump', { start: 0, end: 1 }),
       frameRate: 8,
+      repeat: 0,
+    });
+
+    this.anims.create({
+      key: 'player-shoot-anim',
+      frames: this.anims.generateFrameNumbers('player-shoot', { start: 0, end: 2 }),
+      frameRate: 12,
       repeat: 0,
     });
 
