@@ -1,4 +1,6 @@
 import Phaser from 'phaser';
+import { BootScene } from './scenes/BootScene';
+import { GameScene } from './scenes/GameScene';
 
 const config: Phaser.Types.Core.GameConfig = {
   type: Phaser.AUTO,
@@ -18,9 +20,7 @@ const config: Phaser.Types.Core.GameConfig = {
     mode: Phaser.Scale.FIT,
     autoCenter: Phaser.Scale.CENTER_BOTH,
   },
-  scene: [],
+  scene: [BootScene, GameScene],
 };
 
-const game = new Phaser.Game(config);
-
-console.log('Super Grotto Escape initialized!', game);
+new Phaser.Game(config);
