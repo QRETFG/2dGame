@@ -1,0 +1,15 @@
+{
+  "id": "room-start",
+  "type": "start",
+  "width": 20,
+  "height": 12,
+  "exits": {
+    "right": true
+  },
+  "platforms": [
+    { "x": 0, "y": 11, "width": 20, "height": 1, "type": "ground" },
+    { "x": 8, "y": 8, "width": 4, "height": 1, "type": "platform" }
+  ],
+  "spawns": [],
+  "playerSpawn": { "x": 2, "y": 9 }
+}
