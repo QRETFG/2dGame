@@ -4,6 +4,7 @@ import { Enemy } from '../entities/enemies/Enemy';
 import { HUD } from '../ui/HUD';
 import { ALL_ENEMY_TYPES, RoomManager } from '../systems/RoomManager';
 import { EnemyType } from '../types/Room';
+import { GameMode } from '../types/GameMode';
 
 interface PlayerProjectilePayload {
   x: number;
@@ -24,6 +25,8 @@ export class GameScene extends Phaser.Scene {
   private readonly SHOP_PANEL_X = 320;
   private readonly SHOP_PANEL_Y = 88;
 
+  private gameMode: GameMode = 'single';
+  private players: Player[] = [];
   private player!: Player;
   private hud!: HUD;
   private roomManager!: RoomManager;
@@ -32,7 +35,7 @@ export class GameScene extends Phaser.Scene {
   private playerBullets!: Phaser.Physics.Arcade.Group;
   private bgm?: Phaser.Sound.BaseSound;
   private nextRoomPortal?: Phaser.Physics.Arcade.Sprite;
-  private portalOverlap?: Phaser.Physics.Arcade.Collider;
+  private portalOverlaps: Phaser.Physics.Arcade.Collider[] = [];
   private shopTerminal?: Phaser.Physics.Arcade.Image;
   private shopPromptText?: Phaser.GameObjects.Text;
   private shopPanelText?: Phaser.GameObjects.Text;
@@ -50,11 +53,16 @@ export class GameScene extends Phaser.Scene {
   private roomClearHandled = false;
   private isChangingRoom = false;
   private levelProgressText?: Phaser.GameObjects.Text;
-  private enemyContactCooldown = false;
+  private enemyContactCooldownUntil = new Map<Player, number>();
+  private gameOverHandled = false;
   private hitSfxCooldownUntil = 0;
 
   constructor() {
     super({ key: 'GameScene' });
+  }
+
+  init(data?: { mode?: GameMode }): void {
+    this.gameMode = data?.mode ?? 'single';
   }
 
   create(): void {
@@ -63,7 +71,8 @@ export class GameScene extends Phaser.Scene {
     this.isChangingRoom = false;
     this.isNearShop = false;
     this.shopOpen = false;
-    this.enemyContactCooldown = false;
+    this.enemyContactCooldownUntil.clear();
+    this.gameOverHandled = false;
 
     // 添加铺满屏幕的多层背景
     this.createParallaxBackground();
@@ -73,8 +82,9 @@ export class GameScene extends Phaser.Scene {
     this.roomManager = new RoomManager(this);
 
     // 创建玩家
-    this.player = new Player(this, 100, 300);
-    this.roomManager.setPlayer(this.player);
+    this.players = this.createPlayers();
+    this.player = this.players[0];
+    this.roomManager.setPlayers(this.players);
 
     // 加载初始房间
     this.currentRoomIndex = 0;
@@ -94,7 +104,7 @@ export class GameScene extends Phaser.Scene {
     this.setupCollisions();
 
     // 创建HUD
-    this.hud = new HUD(this, this.player);
+    this.hud = new HUD(this, this.players);
 
     // 监听敌人死亡事件
     this.events.off('enemyDied', this.onEnemyDied, this);
@@ -120,10 +130,19 @@ export class GameScene extends Phaser.Scene {
     this.keyBuyShield = this.input.keyboard!.addKey(Phaser.Input.Keyboard.KeyCodes.THREE);
 
     // 添加提示文字
-    this.add.text(320, 30, 'WASD移动 | 空格跳跃 | J攻击 | L切换武器 | K格挡(需盾牌) | E商店', {
+    this.add.text(320, 30, 'P1: WASD移动 空格跳跃 J攻击 L切换 K格挡 | E商店', {
       fontSize: '14px',
       color: '#ffffff',
     }).setOrigin(0.5).setDepth(100);
+    if (this.gameMode === 'coop') {
+      this.add
+        .text(320, 48, 'P2: ←→移动 ↑跳跃 <攻击 >切换 ?格挡', {
+          fontSize: '13px',
+          color: '#9ed6ff',
+        })
+        .setOrigin(0.5)
+        .setDepth(100);
+    }
     this.levelProgressText = this.add.text(548, 58, '', {
       fontSize: '14px',
       color: '#9df59d',
@@ -133,6 +152,25 @@ export class GameScene extends Phaser.Scene {
     this.updateLevelProgressText();
 
     this.tryHandleRoomClearState();
+  }
+
+  private createPlayers(): Player[] {
+    const p1 = new Player(this, 100, 300, {
+      controlPreset: 'p1',
+      label: 'P1',
+    });
+
+    if (this.gameMode !== 'coop') {
+      return [p1];
+    }
+
+    const p2 = new Player(this, 136, 300, {
+      controlPreset: 'p2',
+      tintColor: 0x92d6ff,
+      label: 'P2',
+    });
+
+    return [p1, p2];
   }
 
   private createParallaxBackground(): void {
@@ -186,28 +224,32 @@ export class GameScene extends Phaser.Scene {
     const enemies = this.roomManager.getEnemies();
 
     // 玩家与平台碰撞
-    this.physics.add.collider(this.player, platforms);
+    this.players.forEach((player) => {
+      this.physics.add.collider(player, platforms);
+    });
 
     // 敌人与平台碰撞
     this.physics.add.collider(enemies, platforms);
 
-    // 玩家攻击与敌人碰撞
-    this.physics.add.overlap(
-      this.player.getMeleeHitbox(),
-      enemies,
-      this.handlePlayerAttack,
-      undefined,
-      this
-    );
+    this.players.forEach((player) => {
+      // 玩家攻击与敌人碰撞
+      this.physics.add.overlap(
+        player.getMeleeHitbox(),
+        enemies,
+        this.handlePlayerAttack,
+        undefined,
+        this
+      );
 
-    // 玩家与敌人碰撞
-    this.physics.add.overlap(
-      this.player,
-      enemies,
-      this.handleEnemyCollision,
-      undefined,
-      this
-    );
+      // 玩家与敌人碰撞
+      this.physics.add.overlap(
+        player,
+        enemies,
+        this.handleEnemyCollision,
+        undefined,
+        this
+      );
+    });
 
     this.physics.add.overlap(
       this.playerBullets,
@@ -221,42 +263,49 @@ export class GameScene extends Phaser.Scene {
   }
 
   private handlePlayerAttack(
-    _hitbox: Phaser.Types.Physics.Arcade.GameObjectWithBody | Phaser.Tilemaps.Tile,
+    hitboxObj: Phaser.Types.Physics.Arcade.GameObjectWithBody | Phaser.Tilemaps.Tile,
     enemyObj: Phaser.Types.Physics.Arcade.GameObjectWithBody | Phaser.Tilemaps.Tile
   ): void {
     const enemy = enemyObj as Enemy;
     if (enemy.isDying()) return;
 
-    if (this.player.isMeleeDamageActive()) {
-      enemy.takeDamage(this.player.getAttackDamage());
+    const attacker = this.resolvePlayerByHitbox(hitboxObj);
+    if (!attacker) {
+      return;
+    }
+
+    if (attacker.isMeleeDamageActive()) {
+      enemy.takeDamage(attacker.getAttackDamage());
       this.playHitSfx();
     }
   }
 
   private handleEnemyCollision(
-    _playerObj: Phaser.Types.Physics.Arcade.GameObjectWithBody | Phaser.Tilemaps.Tile,
+    playerObj: Phaser.Types.Physics.Arcade.GameObjectWithBody | Phaser.Tilemaps.Tile,
     enemyObj: Phaser.Types.Physics.Arcade.GameObjectWithBody | Phaser.Tilemaps.Tile
   ): void {
-    if (this.enemyContactCooldown) {
+    const player = playerObj as Player;
+    if (!this.players.includes(player) || player.getHealth() <= 0) {
+      return;
+    }
+
+    const cooldownUntil = this.enemyContactCooldownUntil.get(player) ?? 0;
+    if (this.time.now < cooldownUntil) {
       return;
     }
 
     const enemy = enemyObj as Enemy;
     if (enemy.isDying()) return;
 
-    const actualDamage = this.player.takeDamage(this.ENEMY_CONTACT_DAMAGE);
+    const actualDamage = player.takeDamage(this.ENEMY_CONTACT_DAMAGE);
     if (actualDamage <= 0) {
       return;
     }
 
-    const isBlocking = this.player.isBlocking();
-    const pushDirection = this.player.x < enemy.x ? -1 : 1;
-    this.player.applyKnockback(pushDirection * (isBlocking ? 120 : 260), isBlocking ? -140 : -230);
-
-    this.enemyContactCooldown = true;
-    this.time.delayedCall(450, () => {
-      this.enemyContactCooldown = false;
-    });
+    const isBlocking = player.isBlocking();
+    const pushDirection = player.x < enemy.x ? -1 : 1;
+    player.applyKnockback(pushDirection * (isBlocking ? 120 : 260), isBlocking ? -140 : -230);
+    this.enemyContactCooldownUntil.set(player, this.time.now + 450);
   }
 
   private onEnemyDied(x: number, y: number, coins: number): void {
@@ -313,7 +362,7 @@ export class GameScene extends Phaser.Scene {
     } else {
       // 最后一个房间清空，游戏胜利
       this.time.delayedCall(1000, () => {
-        this.scene.start('GameOverScene', { victory: true });
+        this.scene.start('GameOverScene', { victory: true, mode: this.gameMode });
       });
     }
   }
@@ -322,7 +371,7 @@ export class GameScene extends Phaser.Scene {
     this.closeShop();
     this.clearShopTerminal();
     this.clearNextRoomPortal();
-    this.scene.start('GameOverScene', { victory: false });
+    this.scene.start('GameOverScene', { victory: false, mode: this.gameMode });
   }
 
   private spawnNextRoomPortal(): void {
@@ -358,20 +407,14 @@ export class GameScene extends Phaser.Scene {
       ease: 'Sine.easeInOut',
     });
 
-    this.portalOverlap = this.physics.add.overlap(
-      this.player,
-      this.nextRoomPortal,
-      this.enterNextRoom,
-      undefined,
-      this
+    this.portalOverlaps = this.players.map((player) =>
+      this.physics.add.overlap(player, this.nextRoomPortal!, this.enterNextRoom, undefined, this)
     );
   }
 
   private clearNextRoomPortal(): void {
-    if (this.portalOverlap) {
-      this.portalOverlap.destroy();
-      this.portalOverlap = undefined;
-    }
+    this.portalOverlaps.forEach((overlap) => overlap.destroy());
+    this.portalOverlaps = [];
 
     if (this.nextRoomPortal) {
       this.nextRoomPortal.destroy();
@@ -388,14 +431,14 @@ export class GameScene extends Phaser.Scene {
     if (this.roomManager.isRoomCleared() && this.currentRoomIndex < this.TOTAL_LEVELS - 1) {
       this.isChangingRoom = true;
       this.currentRoomIndex++;
-      this.player.levelUp(this.LEVEL_UP_MAX_HEALTH_BONUS);
+      this.players.forEach((player) => player.levelUp(this.LEVEL_UP_MAX_HEALTH_BONUS));
       this.showLevelUpText();
       this.roomClearHandled = false;
       this.closeShop();
       this.clearShopTerminal();
       this.clearNextRoomPortal();
       this.roomManager.loadProceduralRoom(this.currentRoomIndex, this.levelEnemyPlan[this.currentRoomIndex]);
-      this.player.activateInvincibility(1000);
+      this.players.forEach((player) => player.activateInvincibility(1000));
       this.updateLevelProgressText();
       this.time.delayedCall(100, () => {
         this.isChangingRoom = false;
@@ -405,11 +448,12 @@ export class GameScene extends Phaser.Scene {
   }
 
   private showLevelUpText(): void {
+    const levelRef = this.players[0];
     const text = this.add
       .text(
         320,
         72,
-        `升级 Lv.${this.player.getLevel()}  最大生命 +${this.LEVEL_UP_MAX_HEALTH_BONUS}`,
+        `${this.gameMode === 'coop' ? '全员' : '玩家'}升级 Lv.${levelRef.getLevel()}  最大生命 +${this.LEVEL_UP_MAX_HEALTH_BONUS}`,
         {
           fontSize: '18px',
           color: '#9df59d',
@@ -524,6 +568,16 @@ export class GameScene extends Phaser.Scene {
     return undefined;
   }
 
+  private resolvePlayerByHitbox(
+    hitboxObj: Phaser.Types.Physics.Arcade.GameObjectWithBody | Phaser.Tilemaps.Tile
+  ): Player | undefined {
+    return this.players.find((player) => player.getMeleeHitbox() === hitboxObj);
+  }
+
+  private getPrimaryPlayer(): Player {
+    return this.players.find((player) => player.getHealth() > 0) ?? this.player;
+  }
+
   private createShopTexts(): void {
     this.shopPanelText = this.add.text(this.SHOP_PANEL_X, this.SHOP_PANEL_Y, '', {
       fontSize: '14px',
@@ -602,8 +656,8 @@ export class GameScene extends Phaser.Scene {
     }
 
     const distance = Phaser.Math.Distance.Between(
-      this.player.x,
-      this.player.y,
+      this.getPrimaryPlayer().x,
+      this.getPrimaryPlayer().y,
       this.shopTerminal.x,
       this.shopTerminal.y
     );
@@ -659,15 +713,16 @@ export class GameScene extends Phaser.Scene {
       return;
     }
 
-    const gunLine = this.player.hasRangedWeapon()
+    const shopPlayer = this.getPrimaryPlayer();
+    const gunLine = shopPlayer.hasRangedWeapon()
       ? `1. 远程枪械 [已购买]`
       : `1. 远程枪械 ${this.GUN_COST} 金币`;
     const potionLine = `2. 生命药水 ${this.POTION_COST} 金币 (+${this.POTION_HEAL}HP)`;
-    const shieldLine = this.player.hasShieldItem()
+    const shieldLine = shopPlayer.hasShieldItem()
       ? '3. 守护盾牌 [已购买]'
       : `3. 守护盾牌 ${this.SHIELD_COST} 金币`;
-    const modeLine = `当前武器: ${this.player.getCombatMode() === 'ranged' ? '远程' : '近战'}`;
-    const guardLine = `格挡状态: ${this.player.hasShieldItem() ? 'K按住可减伤' : '未解锁'}`;
+    const modeLine = `当前武器: ${shopPlayer.getCombatMode() === 'ranged' ? '远程' : '近战'}`;
+    const guardLine = `格挡状态: ${shopPlayer.hasShieldItem() ? 'K按住可减伤' : '未解锁'}`;
 
     this.shopPanelText.setText(`${gunLine}\n${potionLine}\n${shieldLine}\n${modeLine}\n${guardLine}`);
     this.layoutShopUi();
@@ -691,7 +746,8 @@ export class GameScene extends Phaser.Scene {
   }
 
   private buyGun(): void {
-    if (this.player.hasRangedWeapon()) {
+    const shopPlayer = this.getPrimaryPlayer();
+    if (shopPlayer.hasRangedWeapon()) {
       this.showShopInfo('枪械已拥有');
       return;
     }
@@ -701,13 +757,15 @@ export class GameScene extends Phaser.Scene {
       return;
     }
 
-    this.player.unlockRangedWeapon();
+    this.players.forEach((player) => player.unlockRangedWeapon());
     this.renderShopPanel();
     this.showShopInfo('购买成功：已解锁枪械，按L切换武器');
   }
 
   private buyPotion(): void {
-    if (this.player.getHealth() >= this.player.getMaxHealth()) {
+    const healTargets = this.gameMode === 'coop' ? this.players : [this.getPrimaryPlayer()];
+    const hasAnyMissingHealth = healTargets.some((player) => player.getHealth() < player.getMaxHealth());
+    if (!hasAnyMissingHealth) {
       this.showShopInfo('生命值已满');
       return;
     }
@@ -717,13 +775,18 @@ export class GameScene extends Phaser.Scene {
       return;
     }
 
-    this.player.heal(this.POTION_HEAL);
+    healTargets.forEach((player) => {
+      player.heal(this.POTION_HEAL);
+    });
     this.renderShopPanel();
-    this.showShopInfo(`恢复 ${this.POTION_HEAL} 点生命`);
+    this.showShopInfo(this.gameMode === 'coop'
+      ? `全员恢复 ${this.POTION_HEAL} 点生命`
+      : `恢复 ${this.POTION_HEAL} 点生命`);
   }
 
   private buyShield(): void {
-    if (this.player.hasShieldItem()) {
+    const shopPlayer = this.getPrimaryPlayer();
+    if (shopPlayer.hasShieldItem()) {
       this.showShopInfo('盾牌已拥有');
       return;
     }
@@ -733,7 +796,7 @@ export class GameScene extends Phaser.Scene {
       return;
     }
 
-    this.player.unlockShield();
+    this.players.forEach((player) => player.unlockShield());
     this.renderShopPanel();
     this.showShopInfo('购买成功：按住K可格挡伤害');
   }
@@ -842,7 +905,7 @@ export class GameScene extends Phaser.Scene {
   }
 
   update(): void {
-    this.player.update();
+    this.players.forEach((player) => player.update());
     this.hud.update();
 
     // 更新所有敌人
@@ -853,8 +916,10 @@ export class GameScene extends Phaser.Scene {
     this.updateShopState();
     this.tryHandleRoomClearState();
 
-    // 检查玩家是否死亡
-    if (this.player.getHealth() <= 0) {
+    // 检查玩家是否全灭
+    const allDefeated = this.players.every((player) => player.getHealth() <= 0);
+    if (allDefeated && !this.gameOverHandled) {
+      this.gameOverHandled = true;
       this.events.emit('playerDied');
     }
   }

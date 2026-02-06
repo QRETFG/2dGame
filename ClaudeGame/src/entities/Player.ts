@@ -1,16 +1,24 @@
 import Phaser from 'phaser';
 
+export type PlayerControlPreset = 'p1' | 'p2';
+
+export interface PlayerOptions {
+  controlPreset?: PlayerControlPreset;
+  tintColor?: number;
+  label?: string;
+}
+
+interface PlayerControls {
+  left: Phaser.Input.Keyboard.Key;
+  right: Phaser.Input.Keyboard.Key;
+  jump: Phaser.Input.Keyboard.Key[];
+  attack: Phaser.Input.Keyboard.Key[];
+  switchWeapon: Phaser.Input.Keyboard.Key[];
+  block: Phaser.Input.Keyboard.Key[];
+}
+
 export class Player extends Phaser.Physics.Arcade.Sprite {
-  private cursors!: Phaser.Types.Input.Keyboard.CursorKeys;
-  private wasd!: {
-    W: Phaser.Input.Keyboard.Key;
-    A: Phaser.Input.Keyboard.Key;
-    S: Phaser.Input.Keyboard.Key;
-    D: Phaser.Input.Keyboard.Key;
-  };
-  private attackKey!: Phaser.Input.Keyboard.Key;
-  private switchWeaponKey!: Phaser.Input.Keyboard.Key;
-  private blockKey!: Phaser.Input.Keyboard.Key;
+  private controls!: PlayerControls;
 
   private readonly SPEED = 200;
   private readonly JUMP_VELOCITY = -400;
@@ -34,13 +42,18 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
   private invincibleUntil = 0;
   private invincibleAura!: Phaser.GameObjects.Container;
   private invincibleAuraTween?: Phaser.Tweens.Tween;
+  private readonly baseTintColor?: number;
+  private readonly playerLabel: string;
 
   // 攻击碰撞区域
   private meleeHitbox!: Phaser.GameObjects.Rectangle;
   private shieldVisual!: Phaser.GameObjects.Container;
 
-  constructor(scene: Phaser.Scene, x: number, y: number) {
+  constructor(scene: Phaser.Scene, x: number, y: number, options: PlayerOptions = {}) {
     super(scene, x, y, 'player-idle');
+
+    this.baseTintColor = options.tintColor;
+    this.playerLabel = options.label ?? (options.controlPreset === 'p2' ? 'P2' : 'P1');
 
     scene.add.existing(this);
     scene.physics.add.existing(this);
@@ -49,18 +62,7 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
     this.setSize(16, 24);
     this.setOffset(8, 8);
 
-    if (scene.input.keyboard) {
-      this.cursors = scene.input.keyboard.createCursorKeys();
-      this.wasd = {
-        W: scene.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.W),
-        A: scene.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.A),
-        S: scene.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.S),
-        D: scene.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.D),
-      };
-      this.attackKey = scene.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.J);
-      this.switchWeaponKey = scene.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.L);
-      this.blockKey = scene.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.K);
-    }
+    this.setupControls(options.controlPreset ?? 'p1');
 
     // 创建近战攻击碰撞区域（默认不可见）
     this.meleeHitbox = scene.add.rectangle(x + 20, y, 24, 24, 0xff0000, 0.3);
@@ -71,9 +73,53 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
     this.invincibleAura = this.createInvincibleAura(x, y);
 
     this.play('player-idle-anim');
+    this.applyBaseTint();
 
     // 监听动画完成
     this.on('animationcomplete', this.onAnimationComplete, this);
+  }
+
+  private setupControls(preset: PlayerControlPreset): void {
+    const keyboard = this.scene.input.keyboard;
+    if (!keyboard) {
+      throw new Error('Keyboard input is unavailable');
+    }
+
+    if (preset === 'p2') {
+      this.controls = {
+        left: keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.LEFT),
+        right: keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.RIGHT),
+        jump: [
+          keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.UP),
+          keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.NUMPAD_ZERO),
+        ],
+        attack: [
+          keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.COMMA),
+          keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.NUMPAD_ONE),
+        ],
+        switchWeapon: [
+          keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.PERIOD),
+          keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.NUMPAD_TWO),
+        ],
+        block: [
+          keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.FORWARD_SLASH),
+          keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.NUMPAD_THREE),
+        ],
+      };
+      return;
+    }
+
+    this.controls = {
+      left: keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.A),
+      right: keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.D),
+      jump: [
+        keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.W),
+        keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.SPACE),
+      ],
+      attack: [keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.J)],
+      switchWeapon: [keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.L)],
+      block: [keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.K)],
+    };
   }
 
   private onAnimationComplete(animation: Phaser.Animations.Animation): void {
@@ -103,6 +149,15 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
       .container(x, y, [outer, inner])
       .setDepth(19)
       .setVisible(false);
+  }
+
+  private applyBaseTint(): void {
+    if (this.baseTintColor === undefined) {
+      this.clearTint();
+      return;
+    }
+
+    this.setTint(this.baseTintColor);
   }
 
   private updateShieldVisual(): void {
@@ -146,6 +201,10 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
 
   getMaxHealth(): number {
     return this.maxHealth;
+  }
+
+  getPlayerLabel(): string {
+    return this.playerLabel;
   }
 
   hasRangedWeapon(): boolean {
@@ -211,7 +270,7 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
   }
 
   takeDamage(amount: number): number {
-    if (this.isInvincible()) {
+    if (this.health <= 0 || this.isInvincible()) {
       return 0;
     }
 
@@ -227,7 +286,10 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
     this.health = Math.max(0, this.health - finalDamage);
     this.setTint(this.isBlockingDamage ? 0x6aa8ff : 0xff0000);
     this.scene.time.delayedCall(200, () => {
-      this.clearTint();
+      if (!this.active) {
+        return;
+      }
+      this.applyBaseTint();
     });
 
     return finalDamage;
@@ -248,18 +310,23 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
   }
 
   destroy(fromScene?: boolean): void {
+    this.meleeHitbox?.destroy();
     this.shieldVisual?.destroy();
     this.clearInvincibleVisualState();
     this.invincibleAura?.destroy();
     super.destroy(fromScene);
   }
 
+  private isAnyKeyJustDown(keys: Phaser.Input.Keyboard.Key[]): boolean {
+    return keys.some((key) => Phaser.Input.Keyboard.JustDown(key));
+  }
+
+  private isAnyKeyDown(keys: Phaser.Input.Keyboard.Key[]): boolean {
+    return keys.some((key) => key.isDown);
+  }
+
   private isJumpPressed(): boolean {
-    return (
-      Phaser.Input.Keyboard.JustDown(this.cursors.up) ||
-      Phaser.Input.Keyboard.JustDown(this.wasd.W) ||
-      Phaser.Input.Keyboard.JustDown(this.cursors.space)
-    );
+    return this.isAnyKeyJustDown(this.controls.jump);
   }
 
   private performMeleeAttack(): void {
@@ -344,16 +411,23 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
     // 更新攻击区域位置跟随玩家
     const offsetX = this.flipX ? -30 : 30;
     this.meleeHitbox.setPosition(this.x + offsetX, this.y);
-    this.isBlockingDamage = this.hasShield && this.blockKey.isDown;
+    this.isBlockingDamage = this.hasShield && this.isAnyKeyDown(this.controls.block);
     this.updateShieldVisual();
     this.updateInvincibleAura();
+
+    if (this.health <= 0) {
+      this.setVelocity(0, 0);
+      this.meleeDamageActive = false;
+      this.isAttacking = false;
+      return;
+    }
 
     if (this.scene.time.now < this.knockbackUntil) {
       return;
     }
 
     // 攻击输入
-    if (!this.isBlockingDamage && Phaser.Input.Keyboard.JustDown(this.attackKey)) {
+    if (!this.isBlockingDamage && this.isAnyKeyJustDown(this.controls.attack)) {
       if (this.combatMode === 'ranged') {
         this.performRangedAttack();
       } else {
@@ -361,7 +435,7 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
       }
     }
 
-    if (Phaser.Input.Keyboard.JustDown(this.switchWeaponKey)) {
+    if (this.isAnyKeyJustDown(this.controls.switchWeapon)) {
       this.toggleCombatMode();
     }
 
@@ -370,13 +444,13 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
 
     // 水平移动
     const moveSpeedFactor = this.isBlockingDamage ? 0.58 : 1;
-    if (this.cursors.left.isDown || this.wasd.A.isDown) {
+    if (this.controls.left.isDown) {
       this.setVelocityX(-this.SPEED * moveSpeedFactor);
       this.setFlipX(true);
       if (onGround) {
         this.play('player-run-anim', true);
       }
-    } else if (this.cursors.right.isDown || this.wasd.D.isDown) {
+    } else if (this.controls.right.isDown) {
       this.setVelocityX(this.SPEED * moveSpeedFactor);
       this.setFlipX(false);
       if (onGround) {

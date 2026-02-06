@@ -1,60 +1,86 @@
 import Phaser from 'phaser';
 import { Player } from '../entities/Player';
 
+interface PlayerHealthUi {
+  player: Player;
+  bgBar: Phaser.GameObjects.Graphics;
+  healthBar: Phaser.GameObjects.Graphics;
+  healthText: Phaser.GameObjects.Text;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
 export class HUD {
   private scene: Phaser.Scene;
-  private player: Player;
+  private players: Player[];
 
-  private healthBar!: Phaser.GameObjects.Graphics;
-  private healthText!: Phaser.GameObjects.Text;
+  private playerHealthUis: PlayerHealthUi[] = [];
   private coinsText!: Phaser.GameObjects.Text;
 
   private coins = 0;
 
-  constructor(scene: Phaser.Scene, player: Player) {
+  constructor(scene: Phaser.Scene, players: Player | Player[]) {
     this.scene = scene;
-    this.player = player;
+    this.players = Array.isArray(players) ? players : [players];
 
-    this.createHealthBar();
+    this.createHealthBars();
     this.createCoinsDisplay();
   }
 
-  private createHealthBar(): void {
-    // 血条背景
-    const bgBar = this.scene.add.graphics();
-    bgBar.fillStyle(0x333333, 1);
-    bgBar.fillRect(10, 10, 150, 20);
-    bgBar.setScrollFactor(0);
-    bgBar.setDepth(100);
+  private createHealthBars(): void {
+    const totalPlayers = this.players.length;
+    const barWidth = totalPlayers > 1 ? 132 : 150;
 
-    // 血条
-    this.healthBar = this.scene.add.graphics();
-    this.healthBar.setScrollFactor(0);
-    this.healthBar.setDepth(101);
+    this.players.forEach((player, index) => {
+      const x = 10 + index * (barWidth + 16);
+      const y = 10;
+      const height = 20;
 
-    // 血量文字
-    this.healthText = this.scene.add.text(85, 12, '', {
-      fontSize: '14px',
-      color: '#ffffff',
-      fontStyle: 'bold',
+      const bgBar = this.scene.add.graphics();
+      bgBar.fillStyle(0x333333, 1);
+      bgBar.fillRect(x, y, barWidth, height);
+      bgBar.setScrollFactor(0).setDepth(100);
+
+      const healthBar = this.scene.add.graphics();
+      healthBar.setScrollFactor(0).setDepth(101);
+
+      const label = player.getPlayerLabel();
+      const healthText = this.scene.add.text(x + barWidth / 2, y + 2, `${label}:`, {
+        fontSize: totalPlayers > 1 ? '12px' : '14px',
+        color: '#ffffff',
+        fontStyle: 'bold',
+      });
+      healthText.setOrigin(0.5, 0).setScrollFactor(0).setDepth(102);
+
+      this.playerHealthUis.push({
+        player,
+        bgBar,
+        healthBar,
+        healthText,
+        x,
+        y,
+        width: barWidth,
+        height,
+      });
     });
-    this.healthText.setOrigin(0.5, 0);
-    this.healthText.setScrollFactor(0);
-    this.healthText.setDepth(102);
 
-    this.updateHealthBar();
+    this.updateHealthBars();
   }
 
   private createCoinsDisplay(): void {
-    // 金币图标（简单矩形）
+    const totalPlayers = this.players.length;
+    const coinX = totalPlayers > 1 ? 306 : 185;
+    const textX = totalPlayers > 1 ? 321 : 200;
+
     const coinIcon = this.scene.add.graphics();
     coinIcon.fillStyle(0xffd700, 1);
-    coinIcon.fillCircle(185, 20, 8);
+    coinIcon.fillCircle(coinX, 20, 8);
     coinIcon.setScrollFactor(0);
     coinIcon.setDepth(100);
 
-    // 金币数量
-    this.coinsText = this.scene.add.text(200, 12, '0', {
+    this.coinsText = this.scene.add.text(textX, 12, '0', {
       fontSize: '16px',
       color: '#ffd700',
       fontStyle: 'bold',
@@ -67,7 +93,6 @@ export class HUD {
     this.coins += amount;
     this.coinsText.setText(this.coins.toString());
 
-    // 金币增加动画
     this.scene.tweens.add({
       targets: this.coinsText,
       scaleX: 1.3,
@@ -91,28 +116,29 @@ export class HUD {
     return true;
   }
 
-  private updateHealthBar(): void {
-    const health = this.player.getHealth();
-    const maxHealth = this.player.getMaxHealth();
-    const percentage = health / maxHealth;
+  private updateHealthBars(): void {
+    this.playerHealthUis.forEach((ui) => {
+      const health = ui.player.getHealth();
+      const maxHealth = ui.player.getMaxHealth();
+      const percentage = Phaser.Math.Clamp(health / Math.max(1, maxHealth), 0, 1);
 
-    this.healthBar.clear();
+      ui.healthBar.clear();
 
-    // 根据血量变色
-    let color = 0x00ff00;
-    if (percentage < 0.3) {
-      color = 0xff0000;
-    } else if (percentage < 0.6) {
-      color = 0xffff00;
-    }
+      let color = 0x00ff00;
+      if (percentage < 0.3) {
+        color = 0xff0000;
+      } else if (percentage < 0.6) {
+        color = 0xffff00;
+      }
 
-    this.healthBar.fillStyle(color, 1);
-    this.healthBar.fillRect(12, 12, 146 * percentage, 16);
+      ui.healthBar.fillStyle(color, 1);
+      ui.healthBar.fillRect(ui.x + 2, ui.y + 2, (ui.width - 4) * percentage, ui.height - 4);
 
-    this.healthText.setText(`${health}/${maxHealth}`);
+      ui.healthText.setText(`${ui.player.getPlayerLabel()}: ${health}/${maxHealth}`);
+    });
   }
 
   update(): void {
-    this.updateHealthBar();
+    this.updateHealthBars();
   }
 }

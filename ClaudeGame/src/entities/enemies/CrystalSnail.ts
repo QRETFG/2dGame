@@ -92,19 +92,20 @@ export class CrystalSnail extends Enemy {
     body.setAllowGravity(false);
     body.setVelocity(direction * 220, 0);
 
-    if (this.player) {
-      this.scene.physics.add.overlap(shard, this.player, () => {
-        if (!shard.active || !this.player) {
+    this.addOverlapWithPlayers(
+      shard as unknown as Phaser.Types.Physics.Arcade.GameObjectWithBody,
+      (player) => {
+        if (!shard.active) {
           return;
         }
 
-        const damage = this.player.takeDamage(this.config.damage + 3);
+        const damage = player.takeDamage(this.config.damage + 3);
         if (damage > 0) {
-          this.player.applyKnockback(direction * 170, -120);
+          player.applyKnockback(direction * 170, -120);
         }
         shard.destroy();
-      });
-    }
+      }
+    );
 
     this.scene.time.delayedCall(2000, () => {
       if (shard.active) {

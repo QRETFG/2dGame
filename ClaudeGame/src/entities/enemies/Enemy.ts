@@ -18,6 +18,7 @@ export abstract class Enemy extends Phaser.Physics.Arcade.Sprite {
   protected health: number;
   protected maxHealth: number;
   protected player: Player | null = null;
+  protected players: Player[] = [];
   protected patrolDirection = 1;
   protected patrolTimer = 0;
   protected attackCooldown = false;
@@ -50,7 +51,12 @@ export abstract class Enemy extends Phaser.Physics.Arcade.Sprite {
   }
 
   setPlayer(player: Player): void {
-    this.player = player;
+    this.setPlayers([player]);
+  }
+
+  setPlayers(players: Player[]): void {
+    this.players = players;
+    this.updateTargetPlayer();
   }
 
   getHealth(): number {
@@ -123,6 +129,24 @@ export abstract class Enemy extends Phaser.Physics.Arcade.Sprite {
     return Phaser.Math.Distance.Between(this.x, this.y, this.player.x, this.player.y);
   }
 
+  protected getAlivePlayers(): Player[] {
+    return this.players.filter((player) => player.active && player.getHealth() > 0);
+  }
+
+  protected addOverlapWithPlayers(
+    source: Phaser.Types.Physics.Arcade.GameObjectWithBody,
+    onHit: (player: Player) => void
+  ): void {
+    this.getAlivePlayers().forEach((player) => {
+      this.scene.physics.add.overlap(source, player, () => {
+        if (!source.active || !player.active || player.getHealth() <= 0) {
+          return;
+        }
+        onHit(player);
+      });
+    });
+  }
+
   protected canSeePlayer(): boolean {
     return this.getDistanceToPlayer() <= this.config.detectionRange;
   }
@@ -144,6 +168,7 @@ export abstract class Enemy extends Phaser.Physics.Arcade.Sprite {
 
   update(): void {
     if (this.isDead) return;
+    this.updateTargetPlayer();
     this.updateHealthBarPosition();
     this.updateBehavior();
   }
@@ -224,5 +249,19 @@ export abstract class Enemy extends Phaser.Physics.Arcade.Sprite {
       ease: 'Quad.easeOut',
       onComplete: () => damageText.destroy(),
     });
+  }
+
+  private updateTargetPlayer(): void {
+    const alivePlayers = this.getAlivePlayers();
+    if (alivePlayers.length === 0) {
+      this.player = null;
+      return;
+    }
+
+    this.player = alivePlayers.reduce((nearest, current) => {
+      const nearestDistance = Phaser.Math.Distance.Between(this.x, this.y, nearest.x, nearest.y);
+      const currentDistance = Phaser.Math.Distance.Between(this.x, this.y, current.x, current.y);
+      return currentDistance < nearestDistance ? current : nearest;
+    }, alivePlayers[0]);
   }
 }

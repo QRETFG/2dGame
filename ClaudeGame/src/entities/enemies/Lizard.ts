@@ -66,19 +66,20 @@ export class Lizard extends Enemy {
     body.setAllowGravity(false);
     body.setVelocity(direction * 250, -20);
 
-    if (this.player) {
-      this.scene.physics.add.overlap(fireball, this.player, () => {
-        if (!fireball.active || !this.player) {
+    this.addOverlapWithPlayers(
+      fireball as unknown as Phaser.Types.Physics.Arcade.GameObjectWithBody,
+      (player) => {
+        if (!fireball.active) {
           return;
         }
 
-        const damage = this.player.takeDamage(this.config.damage + 4);
+        const damage = player.takeDamage(this.config.damage + 4);
         if (damage > 0) {
-          this.player.applyKnockback(direction * 190, -140);
+          player.applyKnockback(direction * 190, -140);
         }
         fireball.destroy();
-      });
-    }
+      }
+    );
 
     this.scene.time.delayedCall(2200, () => {
       if (fireball.active) {
