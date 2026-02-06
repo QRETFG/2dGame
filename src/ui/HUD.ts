@@ -81,6 +81,16 @@ export class HUD {
     return this.coins;
   }
 
+  spendCoins(amount: number): boolean {
+    if (this.coins < amount) {
+      return false;
+    }
+
+    this.coins -= amount;
+    this.coinsText.setText(this.coins.toString());
+    return true;
+  }
+
   private updateHealthBar(): void {
     const health = this.player.getHealth();
     const maxHealth = this.player.getMaxHealth();

@@ -1,0 +1,7 @@
+node_modules/
+dist/
+*.log
+
+# Raw source packs, runtime does not depend on these directories
+Super Grotto Escape Files/
+SuperGrottoEScape Audio Music Files/
