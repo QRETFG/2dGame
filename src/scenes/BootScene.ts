@@ -56,6 +56,10 @@ export class BootScene extends Phaser.Scene {
       frameWidth: 32,
       frameHeight: 32,
     });
+    this.load.spritesheet('bat', 'assets/sprites/enemies/bat/spritesheet.png', {
+      frameWidth: 32,
+      frameHeight: 32,
+    });
 
     // 加载tileset
     this.load.image('tileset', 'assets/tilemaps/tileset.png');
@@ -103,6 +107,13 @@ export class BootScene extends Phaser.Scene {
       key: 'slime-anim',
       frames: this.anims.generateFrameNumbers('slime', { start: 0, end: 3 }),
       frameRate: 6,
+      repeat: -1,
+    });
+
+    this.anims.create({
+      key: 'bat-anim',
+      frames: this.anims.generateFrameNumbers('bat', { start: 0, end: 4 }),
+      frameRate: 8,
       repeat: -1,
     });
 

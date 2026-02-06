@@ -1,6 +1,7 @@
 import Phaser from 'phaser';
 import { Player } from '../entities/Player';
 import { Slime } from '../entities/enemies/Slime';
+import { Bat } from '../entities/enemies/Bat';
 import { Enemy } from '../entities/enemies/Enemy';
 
 export class GameScene extends Phaser.Scene {
@@ -50,6 +51,11 @@ export class GameScene extends Phaser.Scene {
     const slime2 = new Slime(this, 500, 300);
     slime2.setPlayer(this.player);
     this.enemies.add(slime2);
+
+    // 添加Bat敌人
+    const bat1 = new Bat(this, 300, 100);
+    bat1.setPlayer(this.player);
+    this.enemies.add(bat1);
 
     // 敌人与平台碰撞
     this.physics.add.collider(this.enemies, this.platforms);
