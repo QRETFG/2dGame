@@ -4,11 +4,13 @@ import { Slime } from '../entities/enemies/Slime';
 import { Bat } from '../entities/enemies/Bat';
 import { Skeleton } from '../entities/enemies/Skeleton';
 import { Enemy } from '../entities/enemies/Enemy';
+import { HUD } from '../ui/HUD';
 
 export class GameScene extends Phaser.Scene {
   private player!: Player;
   private platforms!: Phaser.Physics.Arcade.StaticGroup;
   private enemies!: Phaser.GameObjects.Group;
+  private hud!: HUD;
 
   constructor() {
     super({ key: 'GameScene' });
@@ -84,6 +86,9 @@ export class GameScene extends Phaser.Scene {
       this
     );
 
+    // 创建HUD
+    this.hud = new HUD(this, this.player);
+
     // 监听敌人死亡事件
     this.events.on('enemyDied', this.onEnemyDied, this);
 
@@ -91,7 +96,7 @@ export class GameScene extends Phaser.Scene {
     this.add.text(320, 30, 'WASD移动 | 空格跳跃 | J攻击', {
       fontSize: '16px',
       color: '#ffffff',
-    }).setOrigin(0.5);
+    }).setOrigin(0.5).setDepth(100);
   }
 
   private handlePlayerAttack(
@@ -118,13 +123,28 @@ export class GameScene extends Phaser.Scene {
     this.player.takeDamage(enemy.getDamage());
   }
 
-  private onEnemyDied(_x: number, _y: number, coins: number): void {
-    console.log(`敌人死亡! 掉落 ${coins} 金币`);
-    // TODO: 生成金币拾取物
+  private onEnemyDied(x: number, y: number, coins: number): void {
+    this.hud.addCoins(coins);
+
+    // 显示金币数字
+    const coinText = this.add.text(x, y - 20, `+${coins}`, {
+      fontSize: '16px',
+      color: '#ffd700',
+      fontStyle: 'bold',
+    }).setOrigin(0.5);
+
+    this.tweens.add({
+      targets: coinText,
+      y: y - 50,
+      alpha: 0,
+      duration: 800,
+      onComplete: () => coinText.destroy(),
+    });
   }
 
   update(): void {
     this.player.update();
+    this.hud.update();
 
     // 更新所有敌人
     this.enemies.getChildren().forEach((enemy) => {
