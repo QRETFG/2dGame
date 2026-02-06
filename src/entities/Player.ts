@@ -17,6 +17,15 @@ interface PlayerControls {
   block: Phaser.Input.Keyboard.Key[];
 }
 
+export interface ExternalControlState {
+  left: boolean;
+  right: boolean;
+  jump: boolean;
+  attack: boolean;
+  switchWeapon: boolean;
+  block: boolean;
+}
+
 export class Player extends Phaser.Physics.Arcade.Sprite {
   private controls!: PlayerControls;
 
@@ -48,6 +57,8 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
   // 攻击碰撞区域
   private meleeHitbox!: Phaser.GameObjects.Rectangle;
   private shieldVisual!: Phaser.GameObjects.Container;
+  private externalInputState: ExternalControlState = Player.createEmptyExternalControlState();
+  private previousExternalInputState: ExternalControlState = Player.createEmptyExternalControlState();
 
   constructor(scene: Phaser.Scene, x: number, y: number, options: PlayerOptions = {}) {
     super(scene, x, y, 'player-idle');
@@ -183,6 +194,17 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
     this.invincibleAura.setPosition(this.x, this.y - 2);
   }
 
+  private static createEmptyExternalControlState(): ExternalControlState {
+    return {
+      left: false,
+      right: false,
+      jump: false,
+      attack: false,
+      switchWeapon: false,
+      block: false,
+    };
+  }
+
   getMeleeHitbox(): Phaser.GameObjects.Rectangle {
     return this.meleeHitbox;
   }
@@ -229,6 +251,17 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
 
   getLevel(): number {
     return this.level;
+  }
+
+  setExternalInputState(input: Partial<ExternalControlState> | undefined): void {
+    this.externalInputState = {
+      left: !!input?.left,
+      right: !!input?.right,
+      jump: !!input?.jump,
+      attack: !!input?.attack,
+      switchWeapon: !!input?.switchWeapon,
+      block: !!input?.block,
+    };
   }
 
   unlockRangedWeapon(): void {
@@ -325,8 +358,36 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
     return keys.some((key) => key.isDown);
   }
 
+  private isVirtualActionJustPressed(key: keyof ExternalControlState): boolean {
+    return this.externalInputState[key] && !this.previousExternalInputState[key];
+  }
+
   private isJumpPressed(): boolean {
-    return this.isAnyKeyJustDown(this.controls.jump);
+    return this.isAnyKeyJustDown(this.controls.jump) || this.isVirtualActionJustPressed('jump');
+  }
+
+  private isAttackPressed(): boolean {
+    return this.isAnyKeyJustDown(this.controls.attack) || this.isVirtualActionJustPressed('attack');
+  }
+
+  private isSwitchWeaponPressed(): boolean {
+    return this.isAnyKeyJustDown(this.controls.switchWeapon) || this.isVirtualActionJustPressed('switchWeapon');
+  }
+
+  private isBlockDown(): boolean {
+    return this.isAnyKeyDown(this.controls.block) || this.externalInputState.block;
+  }
+
+  private isMoveLeftDown(): boolean {
+    return this.controls.left.isDown || this.externalInputState.left;
+  }
+
+  private isMoveRightDown(): boolean {
+    return this.controls.right.isDown || this.externalInputState.right;
+  }
+
+  private commitExternalInputFrame(): void {
+    this.previousExternalInputState = { ...this.externalInputState };
   }
 
   private performMeleeAttack(): void {
@@ -403,71 +464,75 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
   }
 
   update(): void {
-    const onGround = this.body?.blocked.down ?? false;
-    if (onGround) {
-      this.jumpCount = 0;
-    }
+    try {
+      const onGround = this.body?.blocked.down ?? false;
+      if (onGround) {
+        this.jumpCount = 0;
+      }
 
-    // 更新攻击区域位置跟随玩家
-    const offsetX = this.flipX ? -30 : 30;
-    this.meleeHitbox.setPosition(this.x + offsetX, this.y);
-    this.isBlockingDamage = this.hasShield && this.isAnyKeyDown(this.controls.block);
-    this.updateShieldVisual();
-    this.updateInvincibleAura();
+      // 更新攻击区域位置跟随玩家
+      const offsetX = this.flipX ? -30 : 30;
+      this.meleeHitbox.setPosition(this.x + offsetX, this.y);
+      this.isBlockingDamage = this.hasShield && this.isBlockDown();
+      this.updateShieldVisual();
+      this.updateInvincibleAura();
 
-    if (this.health <= 0) {
-      this.setVelocity(0, 0);
-      this.meleeDamageActive = false;
-      this.isAttacking = false;
-      return;
-    }
+      if (this.health <= 0) {
+        this.setVelocity(0, 0);
+        this.meleeDamageActive = false;
+        this.isAttacking = false;
+        return;
+      }
 
-    if (this.scene.time.now < this.knockbackUntil) {
-      return;
-    }
+      if (this.scene.time.now < this.knockbackUntil) {
+        return;
+      }
 
-    // 攻击输入
-    if (!this.isBlockingDamage && this.isAnyKeyJustDown(this.controls.attack)) {
-      if (this.combatMode === 'ranged') {
-        this.performRangedAttack();
+      // 攻击输入
+      if (!this.isBlockingDamage && this.isAttackPressed()) {
+        if (this.combatMode === 'ranged') {
+          this.performRangedAttack();
+        } else {
+          this.performMeleeAttack();
+        }
+      }
+
+      if (this.isSwitchWeaponPressed()) {
+        this.toggleCombatMode();
+      }
+
+      // 攻击中不能移动（可选）
+      if (this.isAttacking) return;
+
+      // 水平移动
+      const moveSpeedFactor = this.isBlockingDamage ? 0.58 : 1;
+      if (this.isMoveLeftDown()) {
+        this.setVelocityX(-this.SPEED * moveSpeedFactor);
+        this.setFlipX(true);
+        if (onGround) {
+          this.play('player-run-anim', true);
+        }
+      } else if (this.isMoveRightDown()) {
+        this.setVelocityX(this.SPEED * moveSpeedFactor);
+        this.setFlipX(false);
+        if (onGround) {
+          this.play('player-run-anim', true);
+        }
       } else {
-        this.performMeleeAttack();
+        this.setVelocityX(0);
+        if (onGround) {
+          this.play('player-idle-anim', true);
+        }
       }
-    }
 
-    if (this.isAnyKeyJustDown(this.controls.switchWeapon)) {
-      this.toggleCombatMode();
-    }
-
-    // 攻击中不能移动（可选）
-    if (this.isAttacking) return;
-
-    // 水平移动
-    const moveSpeedFactor = this.isBlockingDamage ? 0.58 : 1;
-    if (this.controls.left.isDown) {
-      this.setVelocityX(-this.SPEED * moveSpeedFactor);
-      this.setFlipX(true);
-      if (onGround) {
-        this.play('player-run-anim', true);
+      // 跳跃（二段跳）
+      if (this.isJumpPressed() && this.jumpCount < this.MAX_JUMPS) {
+        this.setVelocityY(this.JUMP_VELOCITY);
+        this.jumpCount += 1;
+        this.play('player-jump-anim', true);
       }
-    } else if (this.controls.right.isDown) {
-      this.setVelocityX(this.SPEED * moveSpeedFactor);
-      this.setFlipX(false);
-      if (onGround) {
-        this.play('player-run-anim', true);
-      }
-    } else {
-      this.setVelocityX(0);
-      if (onGround) {
-        this.play('player-idle-anim', true);
-      }
-    }
-
-    // 跳跃（二段跳）
-    if (this.isJumpPressed() && this.jumpCount < this.MAX_JUMPS) {
-      this.setVelocityY(this.JUMP_VELOCITY);
-      this.jumpCount += 1;
-      this.play('player-jump-anim', true);
+    } finally {
+      this.commitExternalInputFrame();
     }
   }
 }

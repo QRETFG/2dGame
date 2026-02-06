@@ -1,16 +1,24 @@
 import Phaser from 'phaser';
-import { Player } from '../entities/Player';
+import { ExternalControlState, Player } from '../entities/Player';
 import { Enemy } from '../entities/enemies/Enemy';
 import { HUD } from '../ui/HUD';
 import { ALL_ENEMY_TYPES, RoomManager } from '../systems/RoomManager';
 import { EnemyType } from '../types/Room';
 import { GameMode } from '../types/GameMode';
+import { isMobileDevice } from '../utils/device';
 
 interface PlayerProjectilePayload {
   x: number;
   y: number;
   direction: number;
   damage: number;
+}
+
+interface MobileShopInputState {
+  interact: boolean;
+  buyGun: boolean;
+  buyPotion: boolean;
+  buyShield: boolean;
 }
 
 export class GameScene extends Phaser.Scene {
@@ -56,13 +64,43 @@ export class GameScene extends Phaser.Scene {
   private enemyContactCooldownUntil = new Map<Player, number>();
   private gameOverHandled = false;
   private hitSfxCooldownUntil = 0;
+  private isMobileLayout = false;
+  private mobileUiElements: Phaser.GameObjects.GameObject[] = [];
+  private mobileShopButtons: Array<Phaser.GameObjects.GameObject & { setVisible(value: boolean): Phaser.GameObjects.GameObject }> = [];
+  private mobileControlState: ExternalControlState = GameScene.createEmptyMobileControlState();
+  private mobileShopInputState: MobileShopInputState = GameScene.createEmptyMobileShopInputState();
+  private previousMobileShopInputState: MobileShopInputState = GameScene.createEmptyMobileShopInputState();
 
   constructor() {
     super({ key: 'GameScene' });
   }
 
   init(data?: { mode?: GameMode }): void {
-    this.gameMode = data?.mode ?? 'single';
+    this.isMobileLayout = isMobileDevice(this.sys.game.device, this.scale.width, this.scale.height);
+    this.gameMode = this.isMobileLayout ? 'single' : (data?.mode ?? 'single');
+    this.mobileControlState = GameScene.createEmptyMobileControlState();
+    this.mobileShopInputState = GameScene.createEmptyMobileShopInputState();
+    this.previousMobileShopInputState = GameScene.createEmptyMobileShopInputState();
+  }
+
+  private static createEmptyMobileControlState(): ExternalControlState {
+    return {
+      left: false,
+      right: false,
+      jump: false,
+      attack: false,
+      switchWeapon: false,
+      block: false,
+    };
+  }
+
+  private static createEmptyMobileShopInputState(): MobileShopInputState {
+    return {
+      interact: false,
+      buyGun: false,
+      buyPotion: false,
+      buyShield: false,
+    };
   }
 
   create(): void {
@@ -119,6 +157,8 @@ export class GameScene extends Phaser.Scene {
     this.events.once(Phaser.Scenes.Events.DESTROY, this.clearNextRoomPortal, this);
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, this.destroyShop, this);
     this.events.once(Phaser.Scenes.Events.DESTROY, this.destroyShop, this);
+    this.events.once(Phaser.Scenes.Events.SHUTDOWN, this.destroyMobileControls, this);
+    this.events.once(Phaser.Scenes.Events.DESTROY, this.destroyMobileControls, this);
     this.events.off('playerShootProjectile', this.spawnPlayerBullet, this);
     this.events.on('playerShootProjectile', this.spawnPlayerBullet, this);
     this.events.off('weaponModeChanged', this.onWeaponModeChanged, this);
@@ -130,10 +170,13 @@ export class GameScene extends Phaser.Scene {
     this.keyBuyShield = this.input.keyboard!.addKey(Phaser.Input.Keyboard.KeyCodes.THREE);
 
     // 添加提示文字
-    this.add.text(320, 30, 'P1: WASD移动 空格跳跃 J攻击 L切换 K格挡 | E商店', {
-      fontSize: '14px',
+    const tipsY = this.isMobileLayout ? 24 : 30;
+    this.add.text(320, tipsY, this.isMobileLayout
+      ? '移动端操作：左侧移动，右侧跳跃/攻击/切换/格挡'
+      : 'P1: WASD移动 空格跳跃 J攻击 L切换 K格挡 | E商店', {
+      fontSize: this.isMobileLayout ? '12px' : '14px',
       color: '#ffffff',
-    }).setOrigin(0.5).setDepth(100);
+    }).setOrigin(0.5).setDepth(100).setScrollFactor(0);
     if (this.gameMode === 'coop') {
       this.add
         .text(320, 48, 'P2: ←→移动 ↑跳跃 <攻击 >切换 ?格挡', {
@@ -141,15 +184,20 @@ export class GameScene extends Phaser.Scene {
           color: '#9ed6ff',
         })
         .setOrigin(0.5)
-        .setDepth(100);
+        .setDepth(100)
+        .setScrollFactor(0);
     }
-    this.levelProgressText = this.add.text(548, 58, '', {
-      fontSize: '14px',
+    this.levelProgressText = this.add.text(this.isMobileLayout ? 550 : 548, this.isMobileLayout ? 50 : 58, '', {
+      fontSize: this.isMobileLayout ? '13px' : '14px',
       color: '#9df59d',
       backgroundColor: '#102010',
       padding: { x: 8, y: 4 },
     }).setOrigin(0.5).setScrollFactor(0).setDepth(130);
     this.updateLevelProgressText();
+
+    if (this.isMobileLayout) {
+      this.createMobileControls();
+    }
 
     this.tryHandleRoomClearState();
   }
@@ -171,6 +219,145 @@ export class GameScene extends Phaser.Scene {
     });
 
     return [p1, p2];
+  }
+
+  private createMobileControls(): void {
+    this.destroyMobileControls();
+    this.input.addPointer(3);
+
+    const { width, height } = this.scale;
+    const movementY = height - 52;
+    const actionBaseX = width - 86;
+    const actionBaseY = height - 58;
+
+    this.createMobileButton(76, movementY, 30, '←', (pressed) => {
+      this.mobileControlState.left = pressed;
+    });
+    this.createMobileButton(146, movementY, 30, '→', (pressed) => {
+      this.mobileControlState.right = pressed;
+    });
+    this.createMobileButton(actionBaseX - 84, actionBaseY - 22, 28, '跳', (pressed) => {
+      this.mobileControlState.jump = pressed;
+    });
+    this.createMobileButton(actionBaseX, actionBaseY - 58, 27, '攻', (pressed) => {
+      this.mobileControlState.attack = pressed;
+    });
+    this.createMobileButton(actionBaseX + 46, actionBaseY - 6, 24, '切', (pressed) => {
+      this.mobileControlState.switchWeapon = pressed;
+    });
+    this.createMobileButton(actionBaseX - 34, actionBaseY + 24, 24, '盾', (pressed) => {
+      this.mobileControlState.block = pressed;
+    });
+    this.createMobileButton(width / 2, height - 44, 24, 'E', (pressed) => {
+      this.mobileShopInputState.interact = pressed;
+    }, true, false);
+
+    this.createMobileButton(width - 36, 96, 18, '1', (pressed) => {
+      this.mobileShopInputState.buyGun = pressed;
+    }, false, true);
+    this.createMobileButton(width - 36, 132, 18, '2', (pressed) => {
+      this.mobileShopInputState.buyPotion = pressed;
+    }, false, true);
+    this.createMobileButton(width - 36, 168, 18, '3', (pressed) => {
+      this.mobileShopInputState.buyShield = pressed;
+    }, false, true);
+
+    const touchHint = this.add
+      .text(width / 2, height - 10, 'E交互，商店内点1/2/3购买', {
+        fontSize: '11px',
+        color: '#d5f6ff',
+        backgroundColor: '#0b1f2d',
+        padding: { x: 6, y: 2 },
+      })
+      .setOrigin(0.5, 1)
+      .setDepth(190)
+      .setScrollFactor(0);
+    this.mobileUiElements.push(touchHint);
+    this.mobileShopButtons.forEach((button) => button.setVisible(false));
+  }
+
+  private createMobileButton(
+    x: number,
+    y: number,
+    radius: number,
+    label: string,
+    onPressChange: (pressed: boolean) => void,
+    isMainActionButton: boolean = true,
+    isShopButton: boolean = false
+  ): void {
+    const normalFill = isMainActionButton ? 0x1b4965 : 0x293241;
+    const activeFill = isMainActionButton ? 0x3f88c5 : 0x4f5d75;
+
+    const circle = this.add
+      .circle(x, y, radius, normalFill, 0.58)
+      .setStrokeStyle(2, 0xe0fbfc, 0.75)
+      .setDepth(185)
+      .setScrollFactor(0)
+      .setInteractive();
+    const text = this.add
+      .text(x, y, label, {
+        fontSize: radius >= 26 ? '20px' : '16px',
+        color: '#ffffff',
+        fontStyle: 'bold',
+      })
+      .setOrigin(0.5)
+      .setDepth(186)
+      .setScrollFactor(0);
+
+    let activePointerId: number | null = null;
+    const setPressed = (pressed: boolean): void => {
+      circle.setFillStyle(pressed ? activeFill : normalFill, pressed ? 0.9 : 0.58);
+      onPressChange(pressed);
+    };
+    const release = (pointer?: Phaser.Input.Pointer): void => {
+      if (activePointerId === null) {
+        return;
+      }
+      if (pointer && pointer.id !== activePointerId) {
+        return;
+      }
+      activePointerId = null;
+      setPressed(false);
+    };
+
+    circle.on(Phaser.Input.Events.GAMEOBJECT_POINTER_DOWN, (pointer: Phaser.Input.Pointer) => {
+      activePointerId = pointer.id;
+      setPressed(true);
+    });
+    circle.on(Phaser.Input.Events.GAMEOBJECT_POINTER_UP, (pointer: Phaser.Input.Pointer) => {
+      release(pointer);
+    });
+    circle.on(Phaser.Input.Events.GAMEOBJECT_POINTER_OUT, (pointer: Phaser.Input.Pointer) => {
+      release(pointer);
+    });
+
+    const pointerUpHandler = (pointer: Phaser.Input.Pointer): void => release(pointer);
+    this.input.on(Phaser.Input.Events.POINTER_UP, pointerUpHandler);
+    this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
+      this.input.off(Phaser.Input.Events.POINTER_UP, pointerUpHandler);
+    });
+
+    this.mobileUiElements.push(circle, text);
+    if (isShopButton) {
+      this.mobileShopButtons.push(circle, text);
+    }
+  }
+
+  private isMobileShopActionJustPressed(action: keyof MobileShopInputState): boolean {
+    return this.mobileShopInputState[action] && !this.previousMobileShopInputState[action];
+  }
+
+  private commitMobileInputFrame(): void {
+    this.previousMobileShopInputState = { ...this.mobileShopInputState };
+  }
+
+  private destroyMobileControls(): void {
+    this.mobileUiElements.forEach((obj) => obj.destroy());
+    this.mobileUiElements = [];
+    this.mobileShopButtons = [];
+    this.mobileControlState = GameScene.createEmptyMobileControlState();
+    this.mobileShopInputState = GameScene.createEmptyMobileShopInputState();
+    this.previousMobileShopInputState = GameScene.createEmptyMobileShopInputState();
   }
 
   private createParallaxBackground(): void {
@@ -579,8 +766,10 @@ export class GameScene extends Phaser.Scene {
   }
 
   private createShopTexts(): void {
-    this.shopPanelText = this.add.text(this.SHOP_PANEL_X, this.SHOP_PANEL_Y, '', {
-      fontSize: '14px',
+    const panelX = this.SHOP_PANEL_X;
+    const panelY = this.isMobileLayout ? this.SHOP_PANEL_Y - 4 : this.SHOP_PANEL_Y;
+    this.shopPanelText = this.add.text(panelX, panelY, '', {
+      fontSize: this.isMobileLayout ? '13px' : '14px',
       color: '#ffffff',
       backgroundColor: '#000000',
       padding: { x: 10, y: 6 },
@@ -588,8 +777,8 @@ export class GameScene extends Phaser.Scene {
     });
     this.shopPanelText.setOrigin(0.5, 0).setScrollFactor(0).setDepth(130).setVisible(false);
 
-    this.shopInfoText = this.add.text(this.SHOP_PANEL_X, 176, '', {
-      fontSize: '13px',
+    this.shopInfoText = this.add.text(panelX, 176, '', {
+      fontSize: this.isMobileLayout ? '12px' : '13px',
       color: '#ffd166',
       backgroundColor: '#1c1c1c',
       padding: { x: 8, y: 4 },
@@ -634,8 +823,12 @@ export class GameScene extends Phaser.Scene {
     body.setVelocity(0, 0);
     body.setSize(this.shopTerminal.displayWidth, this.shopTerminal.displayHeight, true);
 
-    this.shopPromptText = this.add.text(terminalX, terminalY - this.shopTerminal.displayHeight / 2 - 12, '商店 [E]', {
-      fontSize: '13px',
+    this.shopPromptText = this.add.text(
+      terminalX,
+      terminalY - this.shopTerminal.displayHeight / 2 - 12,
+      this.isMobileLayout ? '商店 [点击E按钮]' : '商店 [E]',
+      {
+      fontSize: this.isMobileLayout ? '12px' : '13px',
       color: '#8be9fd',
       backgroundColor: '#102028',
       padding: { x: 7, y: 3 },
@@ -668,7 +861,8 @@ export class GameScene extends Phaser.Scene {
 
     this.isNearShop = nearShop;
 
-    if (this.isNearShop && Phaser.Input.Keyboard.JustDown(this.keyInteract)) {
+    const interactPressed = Phaser.Input.Keyboard.JustDown(this.keyInteract) || this.isMobileShopActionJustPressed('interact');
+    if (this.isNearShop && interactPressed) {
       this.shopOpen ? this.closeShop() : this.openShop();
     }
 
@@ -676,15 +870,15 @@ export class GameScene extends Phaser.Scene {
       return;
     }
 
-    if (Phaser.Input.Keyboard.JustDown(this.keyBuyGun)) {
+    if (Phaser.Input.Keyboard.JustDown(this.keyBuyGun) || this.isMobileShopActionJustPressed('buyGun')) {
       this.buyGun();
     }
 
-    if (Phaser.Input.Keyboard.JustDown(this.keyBuyPotion)) {
+    if (Phaser.Input.Keyboard.JustDown(this.keyBuyPotion) || this.isMobileShopActionJustPressed('buyPotion')) {
       this.buyPotion();
     }
 
-    if (Phaser.Input.Keyboard.JustDown(this.keyBuyShield)) {
+    if (Phaser.Input.Keyboard.JustDown(this.keyBuyShield) || this.isMobileShopActionJustPressed('buyShield')) {
       this.buyShield();
     }
   }
@@ -693,10 +887,13 @@ export class GameScene extends Phaser.Scene {
     this.shopOpen = true;
     this.renderShopPanel();
     this.shopPanelText?.setVisible(true);
-    this.shopInfoText?.setVisible(true).setText('按1/2/3购买，按E关闭商店');
+    this.shopInfoText?.setVisible(true).setText(this.isMobileLayout ? '点1/2/3购买，再按E按钮关闭商店' : '按1/2/3购买，按E关闭商店');
     this.shopGunIcon?.setVisible(true).play('bullet-shot-anim');
     this.shopPotionIcon?.setVisible(true);
     this.shopShieldIcon?.setVisible(true);
+    if (this.isMobileLayout) {
+      this.mobileShopButtons.forEach((button) => button.setVisible(true));
+    }
   }
 
   private closeShop(): void {
@@ -706,6 +903,9 @@ export class GameScene extends Phaser.Scene {
     this.shopGunIcon?.setVisible(false).stop();
     this.shopPotionIcon?.setVisible(false);
     this.shopShieldIcon?.setVisible(false);
+    if (this.isMobileLayout) {
+      this.mobileShopButtons.forEach((button) => button.setVisible(false));
+    }
   }
 
   private renderShopPanel(): void {
@@ -722,7 +922,8 @@ export class GameScene extends Phaser.Scene {
       ? '3. 守护盾牌 [已购买]'
       : `3. 守护盾牌 ${this.SHIELD_COST} 金币`;
     const modeLine = `当前武器: ${shopPlayer.getCombatMode() === 'ranged' ? '远程' : '近战'}`;
-    const guardLine = `格挡状态: ${shopPlayer.hasShieldItem() ? 'K按住可减伤' : '未解锁'}`;
+    const guardHint = this.isMobileLayout ? '按住盾按钮可减伤' : 'K按住可减伤';
+    const guardLine = `格挡状态: ${shopPlayer.hasShieldItem() ? guardHint : '未解锁'}`;
 
     this.shopPanelText.setText(`${gunLine}\n${potionLine}\n${shieldLine}\n${modeLine}\n${guardLine}`);
     this.layoutShopUi();
@@ -759,7 +960,7 @@ export class GameScene extends Phaser.Scene {
 
     this.players.forEach((player) => player.unlockRangedWeapon());
     this.renderShopPanel();
-    this.showShopInfo('购买成功：已解锁枪械，按L切换武器');
+    this.showShopInfo(this.isMobileLayout ? '购买成功：已解锁枪械，点切换按钮切武器' : '购买成功：已解锁枪械，按L切换武器');
   }
 
   private buyPotion(): void {
@@ -798,7 +999,7 @@ export class GameScene extends Phaser.Scene {
 
     this.players.forEach((player) => player.unlockShield());
     this.renderShopPanel();
-    this.showShopInfo('购买成功：按住K可格挡伤害');
+    this.showShopInfo(this.isMobileLayout ? '购买成功：按住盾按钮可格挡伤害' : '购买成功：按住K可格挡伤害');
   }
 
   private showShopInfo(message: string, color: string = '#ffd166'): void {
@@ -905,6 +1106,9 @@ export class GameScene extends Phaser.Scene {
   }
 
   update(): void {
+    this.players.forEach((player, index) => {
+      player.setExternalInputState(this.isMobileLayout && index === 0 ? this.mobileControlState : undefined);
+    });
     this.players.forEach((player) => player.update());
     this.hud.update();
 
@@ -921,6 +1125,10 @@ export class GameScene extends Phaser.Scene {
     if (allDefeated && !this.gameOverHandled) {
       this.gameOverHandled = true;
       this.events.emit('playerDied');
+    }
+
+    if (this.isMobileLayout) {
+      this.commitMobileInputFrame();
     }
   }
 }
