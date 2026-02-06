@@ -18,6 +18,10 @@
       justify-content: center;
       align-items: center;
       min-height: 100vh;
+      padding-top: env(safe-area-inset-top);
+      padding-right: env(safe-area-inset-right);
+      padding-bottom: env(safe-area-inset-bottom);
+      padding-left: env(safe-area-inset-left);
     }
     canvas {
       image-rendering: pixelated;
@@ -25,9 +29,31 @@
       max-height: 100%;
       touch-action: none;
     }
+    #rotate-lock {
+      position: fixed;
+      inset: 0;
+      display: none;
+      align-items: center;
+      justify-content: center;
+      text-align: center;
+      background: rgba(8, 10, 18, 0.96);
+      color: #e6f2ff;
+      font-size: 24px;
+      font-weight: bold;
+      letter-spacing: 1px;
+      z-index: 9999;
+      padding: 20px;
+    }
+    #rotate-lock.visible {
+      display: flex;
+    }
+    body.portrait-locked canvas {
+      visibility: hidden;
+    }
   </style>
 </head>
 <body>
+  <div id="rotate-lock">请横屏操作以完整显示游戏与按键</div>
   <script type="module" src="/src/main.ts"></script>
 </body>
 </html>

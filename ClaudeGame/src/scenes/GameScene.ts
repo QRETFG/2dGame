@@ -22,6 +22,7 @@ interface MobileShopInputState {
 }
 
 export class GameScene extends Phaser.Scene {
+  private readonly PLAYFIELD_HEIGHT = 384;
   private readonly TOTAL_LEVELS = 5;
   private readonly ENEMY_CONTACT_DAMAGE = 10;
   private readonly GUN_COST = 80;
@@ -111,6 +112,7 @@ export class GameScene extends Phaser.Scene {
     this.shopOpen = false;
     this.enemyContactCooldownUntil.clear();
     this.gameOverHandled = false;
+    this.physics.world.setBounds(0, 0, this.scale.width, this.PLAYFIELD_HEIGHT);
 
     // 添加铺满屏幕的多层背景
     this.createParallaxBackground();
@@ -226,45 +228,58 @@ export class GameScene extends Phaser.Scene {
     this.input.addPointer(3);
 
     const { width, height } = this.scale;
-    const movementY = height - 52;
-    const actionBaseX = width - 86;
-    const actionBaseY = height - 58;
+    const panelTop = this.PLAYFIELD_HEIGHT + 4;
+    const panelBottom = height - 4;
+    const panelHeight = Math.max(70, panelBottom - panelTop);
+    const rowTop = panelTop + panelHeight * 0.28;
+    const rowMiddle = panelTop + panelHeight * 0.58;
+    const rowBottom = panelTop + panelHeight * 0.83;
 
-    this.createMobileButton(76, movementY, 30, '←', (pressed) => {
+    const panelBg = this.add
+      .rectangle(width / 2, panelTop + panelHeight / 2, width, panelHeight + 8, 0x09131d, 0.92)
+      .setDepth(170)
+      .setScrollFactor(0);
+    const panelLine = this.add
+      .rectangle(width / 2, this.PLAYFIELD_HEIGHT + 0.5, width, 2, 0x5cc8ff, 0.55)
+      .setDepth(171)
+      .setScrollFactor(0);
+    this.mobileUiElements.push(panelBg, panelLine);
+
+    this.createMobileButton(70, rowMiddle, 22, '←', (pressed) => {
       this.mobileControlState.left = pressed;
     });
-    this.createMobileButton(146, movementY, 30, '→', (pressed) => {
+    this.createMobileButton(132, rowMiddle, 22, '→', (pressed) => {
       this.mobileControlState.right = pressed;
     });
-    this.createMobileButton(actionBaseX - 84, actionBaseY - 22, 28, '跳', (pressed) => {
+    this.createMobileButton(width - 166, rowMiddle, 21, '跳', (pressed) => {
       this.mobileControlState.jump = pressed;
     });
-    this.createMobileButton(actionBaseX, actionBaseY - 58, 27, '攻', (pressed) => {
+    this.createMobileButton(width - 112, rowTop, 20, '攻', (pressed) => {
       this.mobileControlState.attack = pressed;
     });
-    this.createMobileButton(actionBaseX + 46, actionBaseY - 6, 24, '切', (pressed) => {
+    this.createMobileButton(width - 62, rowMiddle, 18, '切', (pressed) => {
       this.mobileControlState.switchWeapon = pressed;
     });
-    this.createMobileButton(actionBaseX - 34, actionBaseY + 24, 24, '盾', (pressed) => {
+    this.createMobileButton(width - 112, rowBottom, 18, '盾', (pressed) => {
       this.mobileControlState.block = pressed;
     });
-    this.createMobileButton(width / 2, height - 44, 24, 'E', (pressed) => {
+    this.createMobileButton(width / 2, rowMiddle, 21, 'E', (pressed) => {
       this.mobileShopInputState.interact = pressed;
     }, true, false);
 
-    this.createMobileButton(width - 36, 96, 18, '1', (pressed) => {
+    this.createMobileButton(width / 2 + 54, rowTop, 14, '1', (pressed) => {
       this.mobileShopInputState.buyGun = pressed;
     }, false, true);
-    this.createMobileButton(width - 36, 132, 18, '2', (pressed) => {
+    this.createMobileButton(width / 2 + 88, rowTop, 14, '2', (pressed) => {
       this.mobileShopInputState.buyPotion = pressed;
     }, false, true);
-    this.createMobileButton(width - 36, 168, 18, '3', (pressed) => {
+    this.createMobileButton(width / 2 + 122, rowTop, 14, '3', (pressed) => {
       this.mobileShopInputState.buyShield = pressed;
     }, false, true);
 
     const touchHint = this.add
-      .text(width / 2, height - 10, 'E交互，商店内点1/2/3购买', {
-        fontSize: '11px',
+      .text(width / 2, panelBottom - 2, '左侧移动 | 右侧跳攻切盾 | E交互 | 商店点1/2/3购买', {
+        fontSize: '10px',
         color: '#d5f6ff',
         backgroundColor: '#0b1f2d',
         padding: { x: 6, y: 2 },
@@ -296,7 +311,7 @@ export class GameScene extends Phaser.Scene {
       .setInteractive();
     const text = this.add
       .text(x, y, label, {
-        fontSize: radius >= 26 ? '20px' : '16px',
+        fontSize: `${Math.max(11, Math.round(radius * 0.78))}px`,
         color: '#ffffff',
         fontStyle: 'bold',
       })
