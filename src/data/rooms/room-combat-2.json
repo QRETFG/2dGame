@@ -1,0 +1,26 @@
+{
+  "id": "room-combat-2",
+  "type": "combat",
+  "width": 20,
+  "height": 12,
+  "exits": {
+    "left": true,
+    "right": true
+  },
+  "platforms": [
+    { "x": 0, "y": 11, "width": 20, "height": 1, "type": "ground" },
+    { "x": 0, "y": 7, "width": 3, "height": 1, "type": "platform" },
+    { "x": 17, "y": 7, "width": 3, "height": 1, "type": "platform" },
+    { "x": 6, "y": 8, "width": 3, "height": 1, "type": "platform" },
+    { "x": 11, "y": 8, "width": 3, "height": 1, "type": "platform" },
+    { "x": 8, "y": 4, "width": 4, "height": 1, "type": "platform" }
+  ],
+  "spawns": [
+    { "x": 1, "y": 6, "type": "skeleton" },
+    { "x": 18, "y": 6, "type": "skeleton" },
+    { "x": 7, "y": 7, "type": "slime" },
+    { "x": 12, "y": 7, "type": "slime" },
+    { "x": 10, "y": 3, "type": "bat" }
+  ],
+  "playerSpawn": { "x": 10, "y": 9 }
+}

@@ -9,6 +9,8 @@ import { Enemy } from '../entities/enemies/Enemy';
 // 导入房间数据
 import roomStart from '../data/rooms/room-start.json';
 import roomCombat1 from '../data/rooms/room-combat-1.json';
+import roomCombat2 from '../data/rooms/room-combat-2.json';
+import roomBoss from '../data/rooms/room-boss.json';
 
 const TILE_SIZE = 32;
 
@@ -29,6 +31,8 @@ export class RoomManager {
     // 注册房间模板
     this.roomTemplates.set('room-start', roomStart as RoomData);
     this.roomTemplates.set('room-combat-1', roomCombat1 as RoomData);
+    this.roomTemplates.set('room-combat-2', roomCombat2 as RoomData);
+    this.roomTemplates.set('room-boss', roomBoss as RoomData);
   }
 
   setPlayer(player: Player): void {

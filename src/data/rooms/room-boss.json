@@ -1,0 +1,25 @@
+{
+  "id": "room-boss",
+  "type": "boss",
+  "width": 20,
+  "height": 12,
+  "exits": {
+    "left": true
+  },
+  "platforms": [
+    { "x": 0, "y": 11, "width": 20, "height": 1, "type": "ground" },
+    { "x": 2, "y": 8, "width": 4, "height": 1, "type": "platform" },
+    { "x": 14, "y": 8, "width": 4, "height": 1, "type": "platform" },
+    { "x": 8, "y": 6, "width": 4, "height": 1, "type": "platform" }
+  ],
+  "spawns": [
+    { "x": 4, "y": 7, "type": "skeleton" },
+    { "x": 16, "y": 7, "type": "skeleton" },
+    { "x": 8, "y": 10, "type": "slime" },
+    { "x": 12, "y": 10, "type": "slime" },
+    { "x": 6, "y": 3, "type": "bat" },
+    { "x": 14, "y": 3, "type": "bat" },
+    { "x": 10, "y": 5, "type": "skeleton" }
+  ],
+  "playerSpawn": { "x": 2, "y": 9 }
+}
