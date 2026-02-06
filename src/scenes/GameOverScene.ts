@@ -1,14 +1,17 @@
 import Phaser from 'phaser';
+import { GameMode } from '../types/GameMode';
 
 export class GameOverScene extends Phaser.Scene {
   private isVictory: boolean = false;
+  private gameMode: GameMode = 'single';
 
   constructor() {
     super({ key: 'GameOverScene' });
   }
 
-  init(data: { victory?: boolean }): void {
+  init(data: { victory?: boolean; mode?: GameMode }): void {
     this.isVictory = data.victory || false;
+    this.gameMode = data.mode || 'single';
   }
 
   create(): void {
@@ -41,11 +44,11 @@ export class GameOverScene extends Phaser.Scene {
 
     // 键盘输入
     this.input.keyboard?.on('keydown-R', () => {
-      this.scene.start('GameScene');
+      this.scene.start('GameScene', { mode: this.gameMode });
     });
 
     this.input.keyboard?.on('keydown-ESC', () => {
-      this.scene.start('BootScene');
+      this.scene.start('HomeScene');
     });
   }
 }

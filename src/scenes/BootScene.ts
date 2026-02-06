@@ -273,7 +273,7 @@ export class BootScene extends Phaser.Scene {
       });
     }
 
-    // 切换到游戏场景
-    this.scene.start('GameScene');
+    // 切换到主页场景
+    this.scene.start('HomeScene');
   }
 }

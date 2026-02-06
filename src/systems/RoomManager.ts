@@ -35,7 +35,7 @@ export class RoomManager {
   private platforms: Phaser.Physics.Arcade.StaticGroup;
   private platformVisuals: Phaser.GameObjects.Image[] = [];
   private enemies: Phaser.GameObjects.Group;
-  private player: Player | null = null;
+  private players: Player[] = [];
 
   constructor(scene: Phaser.Scene) {
     this.scene = scene;
@@ -43,8 +43,8 @@ export class RoomManager {
     this.enemies = scene.add.group();
   }
 
-  setPlayer(player: Player): void {
-    this.player = player;
+  setPlayers(players: Player[]): void {
+    this.players = players;
   }
 
   getPlatforms(): Phaser.Physics.Arcade.StaticGroup {
@@ -67,9 +67,13 @@ export class RoomManager {
     this.createPlatforms(roomData.platforms);
     this.spawnEnemies(roomData.spawns);
 
-    if (this.player) {
-      this.player.setPosition(roomData.playerSpawn.x * TILE_SIZE + TILE_SIZE / 2, roomData.playerSpawn.y * TILE_SIZE);
-    }
+    this.players.forEach((player, index) => {
+      const spawnOffset = index * 28;
+      player.setPosition(
+        roomData.playerSpawn.x * TILE_SIZE + TILE_SIZE / 2 + spawnOffset,
+        roomData.playerSpawn.y * TILE_SIZE
+      );
+    });
   }
 
   private createProceduralRoom(levelIndex: number, levelEnemies: EnemyType[]): RoomData {
@@ -228,7 +232,7 @@ export class RoomManager {
   }
 
   private spawnEnemies(spawns: EnemySpawn[]): void {
-    if (!this.player) {
+    if (this.players.length === 0) {
       return;
     }
 
@@ -241,7 +245,7 @@ export class RoomManager {
         return;
       }
 
-      enemy.setPlayer(this.player!);
+      enemy.setPlayers(this.players);
       this.enemies.add(enemy);
     });
   }

@@ -146,12 +146,15 @@ export class Skeleton extends Enemy {
     });
 
     // 检测与玩家碰撞
-    if (this.player) {
-      this.scene.physics.add.overlap(bone, this.player, () => {
-        this.player!.takeDamage(this.config.damage);
-        bone.destroy();
-      });
-    }
+    this.addOverlapWithPlayers(
+      bone as unknown as Phaser.Types.Physics.Arcade.GameObjectWithBody,
+      (player) => {
+        const dealt = player.takeDamage(this.config.damage);
+        if (dealt > 0) {
+          bone.destroy();
+        }
+      }
+    );
 
     // 超时销毁
     this.scene.time.delayedCall(2000, () => {

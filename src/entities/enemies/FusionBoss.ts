@@ -230,19 +230,20 @@ export class FusionBoss extends Enemy {
       .ellipse(this.x + direction * 8, this.y + 14, 176, 52, 0xffb066, 0.26)
       .setDepth(17);
 
-    if (this.player) {
-      this.scene.physics.add.overlap(waveZone, this.player, () => {
-        if (!waveZone.active || !this.player) {
+    this.addOverlapWithPlayers(
+      waveZone as unknown as Phaser.Types.Physics.Arcade.GameObjectWithBody,
+      (player) => {
+        if (!waveZone.active) {
           return;
         }
 
-        const dealt = this.player.takeDamage(this.config.damage + 8);
+        const dealt = player.takeDamage(this.config.damage + 8);
         if (dealt > 0) {
-          this.player.applyKnockback(direction * 270, -190);
+          player.applyKnockback(direction * 270, -190);
         }
         waveZone.destroy();
-      });
-    }
+      }
+    );
 
     this.scene.tweens.add({
       targets: waveVisual,
@@ -275,19 +276,20 @@ export class FusionBoss extends Enemy {
     body.setAllowGravity(false);
     body.setVelocity(velocityX, velocityY);
 
-    if (this.player) {
-      this.scene.physics.add.overlap(projectile, this.player, () => {
-        if (!projectile.active || !this.player) {
+    this.addOverlapWithPlayers(
+      projectile as unknown as Phaser.Types.Physics.Arcade.GameObjectWithBody,
+      (player) => {
+        if (!projectile.active) {
           return;
         }
 
-        const dealt = this.player.takeDamage(damage);
+        const dealt = player.takeDamage(damage);
         if (dealt > 0) {
-          this.player.applyKnockback(velocityX > 0 ? 210 : -210, -150);
+          player.applyKnockback(velocityX > 0 ? 210 : -210, -150);
         }
         projectile.destroy();
-      });
-    }
+      }
+    );
 
     this.scene.time.delayedCall(2600, () => {
       if (projectile.active) {
