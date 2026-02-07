@@ -1,4 +1,5 @@
 import Phaser from 'phaser';
+import { CUSTOM_BGM_TRACKS } from '../data/bgmTracks';
 
 export class BootScene extends Phaser.Scene {
   constructor() {
@@ -108,6 +109,9 @@ export class BootScene extends Phaser.Scene {
     // 加载平台素材与背景音乐
     this.load.image('platform-floating', 'assets/props/floating-platform.png');
     this.load.audio('bgm-main', ['assets/audio/bgm-main.ogg', 'assets/audio/bgm-main.wav']);
+    for (const track of CUSTOM_BGM_TRACKS) {
+      this.load.audio(track.key, track.url);
+    }
 
     // 加载攻击特效与传送门素材
     this.load.spritesheet('attack-hit', 'assets/fx/player-shoot-hit.png', {

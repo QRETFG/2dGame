@@ -7,6 +7,7 @@ import { EnemyType } from '../types/Room';
 import { GameMode } from '../types/GameMode';
 import { isMobileDevice } from '../utils/device';
 import { computeLayoutMetrics, LayoutMetrics, readSafeAreaInsets } from '../ui/layout';
+import { CUSTOM_BGM_TRACK_KEYS } from '../data/bgmTracks';
 
 interface PlayerProjectilePayload {
   x: number;
@@ -453,15 +454,36 @@ export class GameScene extends Phaser.Scene {
   }
 
   private startBackgroundMusic(): void {
+    this.playRandomBackgroundMusic();
+  }
+
+  private playRandomBackgroundMusic(): void {
+    const keys = this.getPlayableBgmKeys();
+    if (keys.length === 0) {
+      console.warn('No playable background music was loaded.');
+      return;
+    }
+
     if (this.bgm?.isPlaying) {
       return;
     }
 
-    this.bgm = this.sound.add('bgm-main', {
+    const nextKey = Phaser.Utils.Array.GetRandom(keys);
+    this.stopBackgroundMusic();
+    this.bgm = this.sound.add(nextKey, {
       loop: true,
       volume: 0.35,
     });
     this.bgm.play();
+  }
+
+  private getPlayableBgmKeys(): string[] {
+    const customKeys = CUSTOM_BGM_TRACK_KEYS.filter((key) => this.cache.audio.exists(key));
+    if (customKeys.length > 0) {
+      return customKeys;
+    }
+
+    return this.cache.audio.exists('bgm-main') ? ['bgm-main'] : [];
   }
 
   private stopBackgroundMusic(): void {
