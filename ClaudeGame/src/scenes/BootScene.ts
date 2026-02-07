@@ -108,7 +108,6 @@ export class BootScene extends Phaser.Scene {
 
     // 加载平台素材与背景音乐
     this.load.image('platform-floating', 'assets/props/floating-platform.png');
-    this.load.audio('bgm-main', ['assets/audio/bgm-main.ogg', 'assets/audio/bgm-main.wav']);
     for (const track of CUSTOM_BGM_TRACKS) {
       this.load.audio(track.key, track.url);
     }
