@@ -1,0 +1,6 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "installCommand": "npm --prefix ClaudeGame install",
+  "buildCommand": "npm --prefix ClaudeGame run build",
+  "outputDirectory": "ClaudeGame/dist"
+}

@@ -1,0 +1,14 @@
+{
+  "name": "wsl_projects",
+  "private": true,
+  "scripts": {
+    "build": "vite build",
+    "dev": "vite"
+  },
+  "dependencies": {
+    "docx": "^9.5.1"
+  },
+  "devDependencies": {
+    "vite": "^7.3.1"
+  }
+}
