@@ -6,6 +6,7 @@ import { ALL_ENEMY_TYPES, RoomManager } from '../systems/RoomManager';
 import { EnemyType } from '../types/Room';
 import { GameMode } from '../types/GameMode';
 import { isMobileDevice } from '../utils/device';
+import { computeLayoutMetrics, LayoutMetrics, readSafeAreaInsets } from '../ui/layout';
 
 interface PlayerProjectilePayload {
   x: number;
@@ -68,16 +69,20 @@ export class GameScene extends Phaser.Scene {
   private isMobileLayout = false;
   private mobileUiElements: Phaser.GameObjects.GameObject[] = [];
   private mobileShopButtons: Array<Phaser.GameObjects.GameObject & { setVisible(value: boolean): Phaser.GameObjects.GameObject }> = [];
+  private mobilePointerUpHandlers: Array<(pointer: Phaser.Input.Pointer) => void> = [];
   private mobileControlState: ExternalControlState = GameScene.createEmptyMobileControlState();
   private mobileShopInputState: MobileShopInputState = GameScene.createEmptyMobileShopInputState();
   private previousMobileShopInputState: MobileShopInputState = GameScene.createEmptyMobileShopInputState();
+  private currentLayout?: LayoutMetrics;
+  private controlsHintText?: Phaser.GameObjects.Text;
+  private coopHintText?: Phaser.GameObjects.Text;
 
   constructor() {
     super({ key: 'GameScene' });
   }
 
   init(data?: { mode?: GameMode }): void {
-    this.isMobileLayout = isMobileDevice(this.sys.game.device, this.scale.width, this.scale.height);
+    this.isMobileLayout = isMobileDevice();
     this.gameMode = this.isMobileLayout ? 'single' : (data?.mode ?? 'single');
     this.mobileControlState = GameScene.createEmptyMobileControlState();
     this.mobileShopInputState = GameScene.createEmptyMobileShopInputState();
@@ -161,6 +166,8 @@ export class GameScene extends Phaser.Scene {
     this.events.once(Phaser.Scenes.Events.DESTROY, this.destroyShop, this);
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, this.destroyMobileControls, this);
     this.events.once(Phaser.Scenes.Events.DESTROY, this.destroyMobileControls, this);
+    this.events.once(Phaser.Scenes.Events.SHUTDOWN, this.detachResizeListener, this);
+    this.events.once(Phaser.Scenes.Events.DESTROY, this.detachResizeListener, this);
     this.events.off('playerShootProjectile', this.spawnPlayerBullet, this);
     this.events.on('playerShootProjectile', this.spawnPlayerBullet, this);
     this.events.off('weaponModeChanged', this.onWeaponModeChanged, this);
@@ -172,15 +179,14 @@ export class GameScene extends Phaser.Scene {
     this.keyBuyShield = this.input.keyboard!.addKey(Phaser.Input.Keyboard.KeyCodes.THREE);
 
     // 添加提示文字
-    const tipsY = this.isMobileLayout ? 24 : 30;
-    this.add.text(320, tipsY, this.isMobileLayout
+    this.controlsHintText = this.add.text(320, 30, this.isMobileLayout
       ? '移动端操作：左侧移动，右侧跳跃/攻击/切换/格挡'
       : 'P1: WASD移动 空格跳跃 J攻击 L切换 K格挡 | E商店', {
       fontSize: this.isMobileLayout ? '12px' : '14px',
       color: '#ffffff',
     }).setOrigin(0.5).setDepth(100).setScrollFactor(0);
     if (this.gameMode === 'coop') {
-      this.add
+      this.coopHintText = this.add
         .text(320, 48, 'P2: ←→移动 ↑跳跃 <攻击 >切换 ?格挡', {
           fontSize: '13px',
           color: '#9ed6ff',
@@ -197,11 +203,62 @@ export class GameScene extends Phaser.Scene {
     }).setOrigin(0.5).setScrollFactor(0).setDepth(130);
     this.updateLevelProgressText();
 
-    if (this.isMobileLayout) {
-      this.createMobileControls();
-    }
+    this.scale.on(Phaser.Scale.Events.RESIZE, this.handleResize, this);
+    this.refreshResponsiveLayout();
 
     this.tryHandleRoomClearState();
+  }
+
+  private handleResize(): void {
+    this.refreshResponsiveLayout();
+  }
+
+  private detachResizeListener(): void {
+    this.scale.off(Phaser.Scale.Events.RESIZE, this.handleResize, this);
+  }
+
+  private refreshResponsiveLayout(): void {
+    const metrics = computeLayoutMetrics({
+      width: this.scale.width,
+      height: this.scale.height,
+      displayWidth: this.scale.displaySize.width,
+      displayHeight: this.scale.displaySize.height,
+      safeArea: readSafeAreaInsets(),
+      isMobile: this.isMobileLayout,
+    });
+    this.currentLayout = metrics;
+    this.hud.setLayout(metrics);
+    this.layoutTopOverlayTexts();
+    this.layoutShopUi();
+
+    if (this.isMobileLayout) {
+      this.createMobileControls(metrics);
+    }
+  }
+
+  private layoutTopOverlayTexts(): void {
+    if (!this.currentLayout) {
+      return;
+    }
+
+    const metrics = this.currentLayout;
+    const compact = metrics.hud.compact;
+    const baseY = metrics.hud.topY + (compact ? 23 : 28);
+    this.controlsHintText?.setPosition(metrics.width / 2, baseY).setStyle({
+      fontSize: compact ? '11px' : (this.isMobileLayout ? '12px' : '14px'),
+    });
+    if (this.coopHintText) {
+      this.coopHintText.setPosition(metrics.width / 2, baseY + (compact ? 15 : 18)).setStyle({
+        fontSize: compact ? '11px' : '13px',
+      });
+    }
+
+    this.levelProgressText?.setPosition(
+      metrics.width - (compact ? 68 : 92),
+      baseY + (this.gameMode === 'coop' ? (compact ? 15 : 20) : (compact ? 14 : 18))
+    ).setStyle({
+      fontSize: compact ? '12px' : (this.isMobileLayout ? '13px' : '14px'),
+    });
   }
 
   private createPlayers(): Player[] {
@@ -223,63 +280,62 @@ export class GameScene extends Phaser.Scene {
     return [p1, p2];
   }
 
-  private createMobileControls(): void {
+  private createMobileControls(metrics: LayoutMetrics): void {
     this.destroyMobileControls();
-    this.input.addPointer(3);
-
-    const { width, height } = this.scale;
-    const panelTop = this.PLAYFIELD_HEIGHT + 4;
-    const panelBottom = height - 4;
-    const panelHeight = Math.max(70, panelBottom - panelTop);
-    const rowTop = panelTop + panelHeight * 0.28;
-    const rowMiddle = panelTop + panelHeight * 0.58;
-    const rowBottom = panelTop + panelHeight * 0.83;
+    const missingPointers = 4 - this.input.manager.pointersTotal;
+    if (missingPointers > 0) {
+      this.input.addPointer(missingPointers);
+    }
+    const { width } = this.scale;
+    const controls = metrics.controls;
+    const panelTop = controls.panelTop;
+    const panelHeight = controls.panelHeight;
 
     const panelBg = this.add
       .rectangle(width / 2, panelTop + panelHeight / 2, width, panelHeight + 8, 0x09131d, 0.92)
       .setDepth(170)
       .setScrollFactor(0);
     const panelLine = this.add
-      .rectangle(width / 2, this.PLAYFIELD_HEIGHT + 0.5, width, 2, 0x5cc8ff, 0.55)
+      .rectangle(width / 2, panelTop, width, 2, 0x5cc8ff, 0.55)
       .setDepth(171)
       .setScrollFactor(0);
     this.mobileUiElements.push(panelBg, panelLine);
 
-    this.createMobileButton(70, rowMiddle, 22, '←', (pressed) => {
+    this.createMobileButton(controls.moveLeftX, controls.movementY, controls.mainButtonRadius, '←', (pressed) => {
       this.mobileControlState.left = pressed;
     });
-    this.createMobileButton(132, rowMiddle, 22, '→', (pressed) => {
+    this.createMobileButton(controls.moveRightX, controls.movementY, controls.mainButtonRadius, '→', (pressed) => {
       this.mobileControlState.right = pressed;
     });
-    this.createMobileButton(width - 166, rowMiddle, 21, '跳', (pressed) => {
+    this.createMobileButton(controls.jumpX, controls.actionBottomY, controls.mainButtonRadius, '跳', (pressed) => {
       this.mobileControlState.jump = pressed;
     });
-    this.createMobileButton(width - 112, rowTop, 20, '攻', (pressed) => {
+    this.createMobileButton(controls.attackX, controls.actionTopY, controls.mainButtonRadius * 0.95, '攻', (pressed) => {
       this.mobileControlState.attack = pressed;
     });
-    this.createMobileButton(width - 62, rowMiddle, 18, '切', (pressed) => {
+    this.createMobileButton(controls.switchWeaponX, controls.movementY, controls.mainButtonRadius * 0.84, '切', (pressed) => {
       this.mobileControlState.switchWeapon = pressed;
     });
-    this.createMobileButton(width - 112, rowBottom, 18, '盾', (pressed) => {
+    this.createMobileButton(controls.blockX, controls.actionBottomY, controls.mainButtonRadius * 0.84, '盾', (pressed) => {
       this.mobileControlState.block = pressed;
     });
-    this.createMobileButton(width / 2, rowMiddle, 21, 'E', (pressed) => {
+    this.createMobileButton(controls.interactX, controls.interactY, controls.mainButtonRadius * 0.95, 'E', (pressed) => {
       this.mobileShopInputState.interact = pressed;
     }, true, false);
 
-    this.createMobileButton(width / 2 + 54, rowTop, 14, '1', (pressed) => {
+    this.createMobileButton(controls.shop1X, controls.shopY, controls.shopButtonRadius, '1', (pressed) => {
       this.mobileShopInputState.buyGun = pressed;
     }, false, true);
-    this.createMobileButton(width / 2 + 88, rowTop, 14, '2', (pressed) => {
+    this.createMobileButton(controls.shop2X, controls.shopY, controls.shopButtonRadius, '2', (pressed) => {
       this.mobileShopInputState.buyPotion = pressed;
     }, false, true);
-    this.createMobileButton(width / 2 + 122, rowTop, 14, '3', (pressed) => {
+    this.createMobileButton(controls.shop3X, controls.shopY, controls.shopButtonRadius, '3', (pressed) => {
       this.mobileShopInputState.buyShield = pressed;
     }, false, true);
 
     const touchHint = this.add
-      .text(width / 2, panelBottom - 2, '左侧移动 | 右侧跳攻切盾 | E交互 | 商店点1/2/3购买', {
-        fontSize: '10px',
+      .text(width / 2, controls.hintY, '左侧移动 | 右侧跳攻切盾 | E交互 | 商店点1/2/3购买', {
+        fontSize: metrics.isPortrait ? '9px' : '10px',
         color: '#d5f6ff',
         backgroundColor: '#0b1f2d',
         padding: { x: 6, y: 2 },
@@ -288,7 +344,7 @@ export class GameScene extends Phaser.Scene {
       .setDepth(190)
       .setScrollFactor(0);
     this.mobileUiElements.push(touchHint);
-    this.mobileShopButtons.forEach((button) => button.setVisible(false));
+    this.mobileShopButtons.forEach((button) => button.setVisible(this.shopOpen && this.isNearShop));
   }
 
   private createMobileButton(
@@ -348,9 +404,7 @@ export class GameScene extends Phaser.Scene {
 
     const pointerUpHandler = (pointer: Phaser.Input.Pointer): void => release(pointer);
     this.input.on(Phaser.Input.Events.POINTER_UP, pointerUpHandler);
-    this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
-      this.input.off(Phaser.Input.Events.POINTER_UP, pointerUpHandler);
-    });
+    this.mobilePointerUpHandlers.push(pointerUpHandler);
 
     this.mobileUiElements.push(circle, text);
     if (isShopButton) {
@@ -370,6 +424,10 @@ export class GameScene extends Phaser.Scene {
     this.mobileUiElements.forEach((obj) => obj.destroy());
     this.mobileUiElements = [];
     this.mobileShopButtons = [];
+    this.mobilePointerUpHandlers.forEach((handler) => {
+      this.input.off(Phaser.Input.Events.POINTER_UP, handler);
+    });
+    this.mobilePointerUpHandlers = [];
     this.mobileControlState = GameScene.createEmptyMobileControlState();
     this.mobileShopInputState = GameScene.createEmptyMobileShopInputState();
     this.previousMobileShopInputState = GameScene.createEmptyMobileShopInputState();
@@ -546,8 +604,10 @@ export class GameScene extends Phaser.Scene {
   }
 
   private showRoomClearedMessage(): void {
+    const centerX = this.currentLayout?.width ? this.currentLayout.width / 2 : this.scale.width / 2;
+    const centerY = this.currentLayout?.height ? this.currentLayout.height / 2 : this.scale.height / 2;
     if (this.currentRoomIndex < this.TOTAL_LEVELS - 1) {
-      const msg = this.add.text(320, 192, '房间已清空! 进入传送门前往下一关', {
+      const msg = this.add.text(centerX, centerY, '房间已清空! 进入传送门前往下一关', {
         fontSize: '20px',
         color: '#00ff00',
         backgroundColor: '#000000',
@@ -651,10 +711,12 @@ export class GameScene extends Phaser.Scene {
 
   private showLevelUpText(): void {
     const levelRef = this.players[0];
+    const centerX = this.currentLayout?.width ? this.currentLayout.width / 2 : this.scale.width / 2;
+    const baseY = this.currentLayout?.hud ? this.currentLayout.hud.topY + 56 : 72;
     const text = this.add
       .text(
-        320,
-        72,
+        centerX,
+        baseY,
         `${this.gameMode === 'coop' ? '全员' : '玩家'}升级 Lv.${levelRef.getLevel()}  最大生命 +${this.LEVEL_UP_MAX_HEALTH_BONUS}`,
         {
           fontSize: '18px',
@@ -781,9 +843,7 @@ export class GameScene extends Phaser.Scene {
   }
 
   private createShopTexts(): void {
-    const panelX = this.SHOP_PANEL_X;
-    const panelY = this.isMobileLayout ? this.SHOP_PANEL_Y - 4 : this.SHOP_PANEL_Y;
-    this.shopPanelText = this.add.text(panelX, panelY, '', {
+    this.shopPanelText = this.add.text(this.SHOP_PANEL_X, this.SHOP_PANEL_Y, '', {
       fontSize: this.isMobileLayout ? '13px' : '14px',
       color: '#ffffff',
       backgroundColor: '#000000',
@@ -792,7 +852,7 @@ export class GameScene extends Phaser.Scene {
     });
     this.shopPanelText.setOrigin(0.5, 0).setScrollFactor(0).setDepth(130).setVisible(false);
 
-    this.shopInfoText = this.add.text(panelX, 176, '', {
+    this.shopInfoText = this.add.text(this.SHOP_PANEL_X, 176, '', {
       fontSize: this.isMobileLayout ? '12px' : '13px',
       color: '#ffd166',
       backgroundColor: '#1c1c1c',
@@ -949,10 +1009,27 @@ export class GameScene extends Phaser.Scene {
       return;
     }
 
+    const layout = this.currentLayout;
+    const panelX = layout ? layout.width / 2 : this.SHOP_PANEL_X;
+    const panelY = layout
+      ? (layout.isMobile ? (layout.isPortrait ? 58 : 72) : this.SHOP_PANEL_Y)
+      : this.SHOP_PANEL_Y;
+    const compact = layout?.hud.compact ?? false;
+    const panelFontSize = this.isMobileLayout ? (compact ? '12px' : '13px') : '14px';
+    const infoFontSize = this.isMobileLayout ? (compact ? '11px' : '12px') : '13px';
+    this.shopPanelText.setPosition(panelX, panelY).setStyle({
+      fontSize: panelFontSize,
+      padding: { x: compact ? 8 : 10, y: compact ? 5 : 6 },
+    });
+    this.shopInfoText?.setStyle({
+      fontSize: infoFontSize,
+      padding: { x: compact ? 7 : 8, y: compact ? 3 : 4 },
+    });
+
     const panelLeftX = this.shopPanelText.x - this.shopPanelText.width / 2;
     const iconX = panelLeftX - 12;
-    const lineTopY = this.shopPanelText.y + 10;
-    const lineGap = 24;
+    const lineTopY = this.shopPanelText.y + (compact ? 9 : 10);
+    const lineGap = compact ? 21 : 24;
 
     this.shopGunIcon?.setPosition(iconX, lineTopY);
     this.shopPotionIcon?.setPosition(iconX, lineTopY + lineGap);
@@ -1083,6 +1160,7 @@ export class GameScene extends Phaser.Scene {
 
   private updateLevelProgressText(): void {
     this.levelProgressText?.setText(`第 ${this.currentRoomIndex + 1}/${this.TOTAL_LEVELS} 关`);
+    this.layoutTopOverlayTexts();
   }
 
   private generateLevelEnemyPlan(): EnemyType[][] {

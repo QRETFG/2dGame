@@ -9,13 +9,20 @@ interface ModeOption {
 }
 
 export class HomeScene extends Phaser.Scene {
-  private options: ModeOption[] = [
+  private readonly defaultOptions: ModeOption[] = [
     { label: '单人模式', mode: 'single', desc: '1名玩家闯关' },
     { label: '双人模式', mode: 'coop', desc: '2名玩家并肩作战' },
   ];
+
+  private options: ModeOption[] = [];
   private isMobileLayout = false;
   private selectedIndex = 0;
+  private backgroundRect?: Phaser.GameObjects.Rectangle;
+  private headerRect?: Phaser.GameObjects.Rectangle;
+  private titleText?: Phaser.GameObjects.Text;
+  private subtitleText?: Phaser.GameObjects.Text;
   private optionTexts: Phaser.GameObjects.Text[] = [];
+  private optionDescTexts: Phaser.GameObjects.Text[] = [];
   private hintText?: Phaser.GameObjects.Text;
 
   constructor() {
@@ -23,34 +30,29 @@ export class HomeScene extends Phaser.Scene {
   }
 
   create(): void {
-    const { width, height } = this.scale;
-    this.isMobileLayout = isMobileDevice(this.sys.game.device, width, height);
-    if (this.isMobileLayout) {
-      this.options = [{ label: '单人模式', mode: 'single', desc: '手机端仅支持1名玩家闯关' }];
-      this.selectedIndex = 0;
-    }
+    this.isMobileLayout = isMobileDevice();
+    this.options = this.isMobileLayout
+      ? [{ label: '单人模式', mode: 'single', desc: '手机端仅支持1名玩家闯关' }]
+      : [...this.defaultOptions];
+    this.selectedIndex = Phaser.Math.Clamp(this.selectedIndex, 0, this.options.length - 1);
 
-    this.add.rectangle(width / 2, height / 2, width, height, 0x0d1b2a, 0.96);
-    this.add.rectangle(width / 2, 92, 420, 88, 0x1b263b, 0.75).setStrokeStyle(2, 0x5bc0be, 0.7);
+    this.backgroundRect = this.add.rectangle(0, 0, 0, 0, 0x0d1b2a, 0.96).setOrigin(0);
+    this.headerRect = this.add.rectangle(0, 0, 0, 0, 0x1b263b, 0.75).setStrokeStyle(2, 0x5bc0be, 0.7);
+    this.titleText = this.add.text(0, 0, 'Super Grotto Escape', {
+      fontSize: '34px',
+      color: '#e0fbfc',
+      fontStyle: 'bold',
+    }).setOrigin(0.5);
+    this.subtitleText = this.add.text(0, 0, '', {
+      fontSize: '16px',
+      color: '#cdeef5',
+    }).setOrigin(0.5);
 
-    this.add
-      .text(width / 2, 76, 'Super Grotto Escape', {
-        fontSize: this.isMobileLayout ? '30px' : '34px',
-        color: '#e0fbfc',
-        fontStyle: 'bold',
-      })
-      .setOrigin(0.5);
-
-    this.add
-      .text(width / 2, 110, this.isMobileLayout ? '点击开始单人闯关' : '选择游玩模式', {
-        fontSize: this.isMobileLayout ? '15px' : '16px',
-        color: '#cdeef5',
-      })
-      .setOrigin(0.5);
-
-    this.createModeOptions(width / 2, this.isMobileLayout ? 194 : 180);
-    this.createControlsHint(width / 2, height - (this.isMobileLayout ? 28 : 42));
-    this.refreshSelection();
+    this.createModeOptions();
+    this.hintText = this.add.text(0, 0, '', {
+      fontSize: '14px',
+      color: '#89a7c2',
+    }).setOrigin(0.5);
 
     this.input.keyboard?.on('keydown-UP', () => this.changeSelection(-1));
     this.input.keyboard?.on('keydown-W', () => this.changeSelection(-1));
@@ -62,25 +64,32 @@ export class HomeScene extends Phaser.Scene {
     }
     this.input.keyboard?.on('keydown-ENTER', () => this.startGame(this.options[this.selectedIndex].mode));
     this.input.keyboard?.on('keydown-SPACE', () => this.startGame(this.options[this.selectedIndex].mode));
+
+    this.scale.on(Phaser.Scale.Events.RESIZE, this.handleResize, this);
+    this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
+      this.scale.off(Phaser.Scale.Events.RESIZE, this.handleResize, this);
+    });
+
+    this.layoutScene();
+    this.refreshSelection();
   }
 
-  private createModeOptions(centerX: number, startY: number): void {
+  private createModeOptions(): void {
     this.options.forEach((option, index) => {
-      const optionY = startY + index * 72;
       const text = this.add
-        .text(centerX, optionY, option.label, {
-          fontSize: this.isMobileLayout ? '28px' : '30px',
+        .text(0, 0, option.label, {
+          fontSize: '30px',
           color: '#d9e6f2',
           backgroundColor: '#23395d',
-          padding: { x: this.isMobileLayout ? 26 : 20, y: this.isMobileLayout ? 12 : 10 },
+          padding: { x: 20, y: 10 },
           fontStyle: 'bold',
         })
         .setOrigin(0.5)
         .setInteractive({ useHandCursor: true });
 
-      this.add
-        .text(centerX, optionY + 28, option.desc, {
-          fontSize: this.isMobileLayout ? '13px' : '14px',
+      const desc = this.add
+        .text(0, 0, option.desc, {
+          fontSize: '14px',
           color: '#9ec4dd',
         })
         .setOrigin(0.5);
@@ -94,19 +103,53 @@ export class HomeScene extends Phaser.Scene {
       });
 
       this.optionTexts.push(text);
+      this.optionDescTexts.push(desc);
     });
   }
 
-  private createControlsHint(centerX: number, y: number): void {
-    const hint = this.isMobileLayout
-      ? '手机端仅单人模式，点击按钮直接开始'
-      : '方向键/WASD 选择  Enter确认  或直接按 1/2';
-    this.hintText = this.add
-      .text(centerX, y, hint, {
-        fontSize: this.isMobileLayout ? '13px' : '14px',
-        color: '#89a7c2',
-      })
-      .setOrigin(0.5);
+  private handleResize(): void {
+    this.layoutScene();
+  }
+
+  private layoutScene(): void {
+    const width = this.scale.width;
+    const height = this.scale.height;
+    const shortestEdge = Math.min(width, height);
+    const compact = shortestEdge < 420;
+
+    this.backgroundRect?.setSize(width, height).setPosition(0, 0);
+
+    const headerWidth = Phaser.Math.Clamp(width * 0.72, 280, 460);
+    const headerHeight = compact ? 82 : 88;
+    const headerY = compact ? 84 : 92;
+    this.headerRect?.setPosition(width / 2, headerY).setSize(headerWidth, headerHeight);
+
+    this.titleText?.setPosition(width / 2, headerY - 16).setStyle({
+      fontSize: this.isMobileLayout ? (compact ? '27px' : '30px') : (compact ? '30px' : '34px'),
+    });
+
+    this.subtitleText?.setPosition(width / 2, headerY + 16).setText(
+      this.isMobileLayout ? '点击开始单人闯关' : '选择游玩模式'
+    ).setStyle({
+      fontSize: compact ? '14px' : '16px',
+    });
+
+    const optionBaseY = this.isMobileLayout ? height * 0.50 : height * 0.47;
+    const optionGap = compact ? 64 : 72;
+    this.optionTexts.forEach((text, index) => {
+      const optionY = optionBaseY + index * optionGap;
+      text.setPosition(width / 2, optionY).setStyle({
+        fontSize: this.isMobileLayout ? (compact ? '24px' : '28px') : (compact ? '27px' : '30px'),
+        padding: { x: compact ? 16 : 22, y: compact ? 8 : 10 },
+      });
+      this.optionDescTexts[index]?.setPosition(width / 2, optionY + (compact ? 23 : 28)).setStyle({
+        fontSize: compact ? '12px' : '14px',
+      });
+    });
+
+    this.hintText?.setPosition(width / 2, height - (compact ? 22 : 32)).setStyle({
+      fontSize: compact ? '12px' : '14px',
+    });
   }
 
   private changeSelection(step: number): void {
